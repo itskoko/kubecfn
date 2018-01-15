@@ -2,7 +2,22 @@
 *Cloudformation based installer for reasonably secure multi-node kubeadm
 cluster.*
 
-# Operations
+## Status
+This still has some rough edges, see the issue. There are still issues
+requiring manual intervention but it's designed to fail graceful in these
+cases. The rolling upgrades of the masters use the
+[WaitOnResourceSignals](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-attribute-updatepolicy.html)
+UpdatePolicy and scripts to ensure it only continues with the rollout of
+the cluster is heathly.
+
+We try to be reasonably secure, meaning all components are secured via TLS
+and RBAC is enabled. Yet, due to the user-data size limits we need to fetch
+the TLS keys from a S3 bucket. The permission for this is granted as an IAM
+instance profile, that means you need to deploy kube2iam or something else
+to block access to the metadata service. This isn't ideal but following the
+current best practices.
+
+## Operations
 You can either edit the Makefile or use environment variable to override
 specific settings.
 
