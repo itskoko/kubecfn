@@ -17,23 +17,23 @@ specific settings.
 
 - When deleting the stack, it will fail to delete the hosted zone because we
   created DNS records from the lambda. In this case delete the records manually
-  and retry deletion.
+  and retry deletion. (https://github.com/itskoko/kubecfn/issues/1)
 
 - Same is true for cloud-provider-integration managed resources like ELBs. These
   should be deleted in kubernetes first. If that's not possible, the resources
-  need to be deleted manually so cloudformation deletion can finish.
+  need to be deleted manually so cloudformation deletion can finish. (https://github.com/itskoko/kubecfn/issues/1)
 
 - On rolling upgrades etcd-members are suppose to remove themself from the
   cluster. This isn't working reliably yet. If this happens, the new replacement
   node can't join the cluster. This will block the rollout. In this case make
   sure the old node is actually terminated and remove it from the cluster with
-  `/etc/etcdctl-wrapper member remove`.
+  `/etc/etcdctl-wrapper member remove`. (https://github.com/itskoko/kubecfn/issues/2)
 
 - Rolling upgrades for workers is disabled right now. When updating, kill the
-  old instances manually.
+  old instances manually. (https://github.com/itskoko/kubecfn/issues/3)
 
 - Sometimes kubeadm fails, probably when it comes up before etcd reached quorum
-  and fails. Just restart it. FIXME
+  and fails (but can be restarted) https://github.com/itskoko/kubecfn/issues/4
 
 - Sometimes ignition fails to get assets from s3 and reboots as a slow form or
   'retry': https://github.com/coreos/bugs/issues/2280
