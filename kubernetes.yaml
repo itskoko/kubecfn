@@ -1,0 +1,1390 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ClusterState:
+    Type: String
+    Description: |
+      etcd cluster state: If this option is set to existing, etcd
+      will attempt to join the existing cluster. If the wrong value is set, etcd
+      will attempt to start but fail safely.
+    Default: existing
+
+  KeyName:
+    Description: Existing EC2 KeyPair for SSH access.
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    Default: cfn-kubernetes
+
+  DomainName:
+    Type: String
+
+  ParentZoneID:
+    Type: String
+
+  ControllerSubdomain:
+    Description: Subdomain for controller ELB, relative to DomainName
+    Type: String
+
+  ControllerInstanceType:
+    Description: EC2 instance type for controller nodes.
+    Type: String
+    Default: m3.medium
+
+  ControllerPoolSize:
+    Type: Number
+    Default: 3
+
+  KubeVersion:
+    Type: String
+    Default: 1.8.4
+
+  KubeletImageTag:
+    Type: String
+    Default: v1.8.4_coreos.0
+
+  KubeadmVersion:
+    Type: String
+    # Default: v1.8.4
+    # https://storage.googleapis.com/kubernetes-release-dev/ci-cross/latest.txt
+    Default: v1.10.0-alpha.0.724+160270800f0995
+
+  KubeadmURLRoot:
+    Type: String
+    Description: No trailing /
+    # Default: https://storage.googleapis.com/kubernetes-release/release
+    Default: https://storage.googleapis.com/kubernetes-release-dev/ci-cross
+
+  KubeadmURLPath:
+    Type: String
+    Description: No leading /
+    Default: bin/linux/amd64/kubeadm
+
+  WorkerInstanceType:
+    Description: EC2 instance type for controller nodes.
+    Type: String
+    Default: c5.4xlarge
+
+  WorkerPoolSizeMin:
+    Description: Number of Worker Nodes
+    Type: Number
+    Default: 2
+
+  WorkerPoolSizeMax:
+    Description: Number of Worker Nodes
+    Type: Number
+    Default: 25
+
+  WorkerVolumeSize:
+    Description: Worker volume size in GB
+    Type: Number
+    Default: 100
+
+  VPCID:
+    Description: Existing VPC with attached internet gateway to use for this cluster.
+    Type: AWS::EC2::VPC::Id
+
+  InternetGateway:
+    Description: The InternetGateway attached to the VPC
+    Type: String
+
+  PublicSubnetCidrPrefix:
+    Type: String
+
+  PublicSubnetCidrASuffix:
+    Type: String
+    Default: 0.0/23
+
+  PublicSubnetCidrBSuffix:
+    Type: String
+    Default: 2.0/23
+
+  PublicSubnetCidrCSuffix:
+    Type: String
+    Default: 4.0/23
+
+  PrivateSubnetCidrPrefix:
+    Type: String
+
+  PrivateSubnetCidrASuffix:
+    Type: String
+    Default: 0.0/23
+
+  PrivateSubnetCidrBSuffix:
+    Type: String
+    Default: 2.0/23
+
+  PrivateSubnetCidrCSuffix:
+    Type: String
+    Default: 4.0/23
+
+  SubnetAZA:
+    Type: String
+    Default: us-east-1b
+
+  SubnetAZB:
+    Type: String
+    Default: us-east-1c
+
+  SubnetAZC:
+    Type: String
+    Default: us-east-1d
+
+  assetBucket:
+    Type: String
+
+Mappings:
+  Assets:
+    etcd:
+      # FIXME ExecStartPre=/bin/chown might not be needed since we bumped
+      # ignition version.
+      unit: |
+        [Unit]
+        Requires=coreos-metadata.service
+        After=coreos-metadata.service
+        
+        [Service]
+        EnvironmentFile=/run/metadata/coreos
+        EnvironmentFile=/etc/etcd.env
+        Environment="RKT_RUN_ARGS=--volume etcd-ssl,kind=host,source=/etc/ssl/etcd \
+          --mount volume=etcd-ssl,target=/etc/ssl/etcd"
+        ExecStartPre=/bin/chown -R etcd:etcd /etc/ssl/etcd
+        # member-add fails if its run again before etcd comes up, so we ignore
+        # the error for now. A failure to add a peer will result in etcd
+        # failing and we can monitor that.
+        ExecStartPre=-/etc/etcd-member-add "${COREOS_EC2_HOSTNAME}"
+        ExecStart=
+        ExecStart=/usr/lib/coreos/etcd-wrapper $ETCD_OPTS \
+          --name="${COREOS_EC2_HOSTNAME}" \
+          --listen-peer-urls="https://${COREOS_EC2_IPV4_LOCAL}:2380" \
+          --listen-client-urls="https://0.0.0.0:2379" \
+          --initial-advertise-peer-urls="https://${COREOS_EC2_HOSTNAME}:2380" \
+          --advertise-client-urls="https://${COREOS_EC2_HOSTNAME}:2379" \
+          --trusted-ca-file=/etc/ssl/etcd/ca.crt \
+          --cert-file=/etc/ssl/etcd/server.crt \
+          --key-file=/etc/ssl/etcd/server.key \
+          --peer-cert-file=/etc/ssl/etcd/peer.crt \
+          --peer-key-file=/etc/ssl/etcd/peer.key \
+          --peer-trusted-ca-file=/etc/ssl/etcd/ca.crt \
+          --client-cert-auth=true \
+          --peer-client-cert-auth=true
+        ExecStop=
+        ExecStop=/etc/etcd-member-remove "${COREOS_EC2_HOSTNAME}"
+        ExecStop=-/usr/bin/rkt stop --uuid-file=/var/lib/coreos/etcd-member-wrapper.uuid
+      etcdctlWrapper: |
+        #!/bin/bash
+        . /etc/etcd.env
+
+        etcdctl -D ${ETCD_DISCOVERY_SRV} \
+          --ca-file=/etc/ssl/etcd/ca.crt \
+          --cert-file=/etc/ssl/etcd/peer.crt \
+          --key-file=/etc/ssl/etcd/peer.key \
+          --no-sync "$@"
+
+      etcdMemberAdd: |
+        #!/bin/bash
+        set -euo pipefail
+        . /run/metadata/coreos
+        if [[ "$ETCD_INITIAL_CLUSTER_STATE" == "new" ]]; then
+          echo "New cluster, exiting"
+          exit 0
+        else
+          echo "Adding ourself to cluster"
+          /etc/etcdctl-wrapper member add "$COREOS_EC2_HOSTNAME" "https://$COREOS_EC2_HOSTNAME:2380"
+        fi
+
+      etcdMemberRemove: |
+        #!/bin/bash
+        set -euo pipefail
+        hostname=$1
+        ID=$(/etc/etcdctl-wrapper member list | awk -F: "/name=$hostname / { print \$1 }")
+        /etc/etcdctl-wrapper member remove "$ID"
+
+    kubelet:
+      unit: |
+        [Unit]
+        Description=Kubernetes Kubelet Server
+        Documentation=https://github.com/kubernetes/kubernetes
+        Requires=coreos-metadata.service
+        After=coreos-metadata.service
+
+        [Service]
+        EnvironmentFile=/etc/kubernetes.env
+        Environment="RKT_RUN_ARGS=--uuid-file-save=/var/run/kubelet-pod.uuid \
+          --volume dns,kind=host,source=/etc/resolv.conf \
+          --volume cni-opt,kind=host,source=/opt/cni \
+          --volume cni-etc,kind=host,source=/etc/cni \
+          --mount volume=dns,target=/etc/resolv.conf \
+          --mount volume=cni-opt,target=/opt/cni \
+          --mount volume=cni-etc,target=/etc/cni"
+        ExecStartPre=/bin/mkdir -p /opt/cni /etc/cni
+        ExecStartPre=-/usr/bin/rkt rm --uuid-file=/var/run/kubelet-pod.uui
+        ExecStart=/usr/lib/coreos/kubelet-wrapper \
+          --kubeconfig=/etc/kubernetes/admin.conf \
+          --pod-manifest-path=/etc/kubernetes/manifests \
+          --cloud-provider=aws \
+          --cloud-config=/etc/kubernetes/cloud-config \
+          --network-plugin=cni \
+          --pod-cidr=10.244.0.0/16 \
+          --cluster-dns=10.96.0.10 \
+          --cluster-domain=${KUBELET_CLUSTER_DOMAIN} \
+          --allow-privileged
+        ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
+        [Install]
+        WantedBy=multi-user.target
+    kubeadm:
+      unit: |
+        [Unit]
+        After=etcd-member.service network-online.target
+        Description=Kubeadm init
+        Documentation=https://github.com/kubernetes/kubernetes
+
+        [Service]
+        Type=oneshot
+        EnvironmentFile=/run/metadata/coreos
+        EnvironmentFile=/etc/kubernetes.env
+        ExecStartPre=/bin/sh -c 'grep nodeName: /etc/kubernetes/controller.yaml \
+          && exit 0; echo "nodeName: $COREOS_EC2_HOSTNAME" \
+          >> /etc/kubernetes/controller.yaml'
+        ExecStart=/opt/bin/kubeadm init --config /etc/kubernetes/controller.yaml \
+          --ignore-preflight-errors=KubeletVersion,Port-10250
+        ExecStartPost=/opt/bin/patch-kube-proxy-cm https://${KUBELET_API_SERVERS}:6443
+        ExecStartPost=/etc/etcd-signal-health
+        [Install]
+        WantedBy=multi-user.target
+      patchKubeProxyCM: |
+        #!/bin/bash
+        set -euo pipefail
+        API=$1
+        shift
+
+        KUBECONFIG=${KUBECONFIG:-/etc/kubernetes/admin.conf}
+        configMapPath="api/v1/namespaces/kube-system/configmaps/kube-proxy"
+        TMP=$(mktemp -d)
+        trap "rm -r '$TMP'" EXIT
+
+        kc_get() {
+          awk '/'$1'/ { print $2 }' "$KUBECONFIG" \
+            | base64 -d
+        }
+        http() {
+          path=$1
+          shift
+          curl --cacert "$TMP/ca.crt" \
+               --cert "$TMP/client.crt" \
+               --key "$TMP/client.key" "$@" "$API/$path"
+        }
+
+        umask 177
+        kc_get certificate-authority-data > "$TMP/ca.crt"
+        kc_get client-key-data            > "$TMP/client.key"
+        kc_get client-certificate-data    > "$TMP/client.crt"
+
+        conf=$(http $configMapPath \
+          | jq '.data["kubeconfig.conf"]' \
+          | sed 's|server: http[^\\\n]*|server: '$API'|')
+
+        cat <<EOF | http $configMapPath -X PATCH \
+          -H 'Content-Type: application/strategic-merge-patch+json' \
+          -d @-
+        { "data": { "kubeconfig.conf": $conf } }'
+        EOF
+
+  # Generate with:
+  # curl -L https://coreos.com/dist/aws/aws-stable.json \
+  #   | jq 'to_entries|map(select(.key != "release_info"))|from_entries' \
+  #   | json2yaml | sed 's/^/    /'
+  RegionToImageMap:
+    ap-northeast-1:
+      hvm: ami-8f65c4e9
+      pv: ami-7d69c81b
+    ap-northeast-2:
+      hvm: ami-5901a437
+      pv: ami-6b02a705
+    ap-south-1:
+      hvm: ami-8ad89ae5
+      pv: ami-1fd89a70
+    ap-southeast-1:
+      hvm: ami-64f1b007
+      pv: ami-c4f2b3a7
+    ap-southeast-2:
+      hvm: ami-6e89660c
+      pv: ami-27896645
+    ca-central-1:
+      hvm: ami-91853df5
+      pv: ami-fd853d99
+    cn-north-1:
+      hvm: ami-d727f4ba
+      pv: ami-d627f4bb
+    eu-central-1:
+      hvm: ami-ea53e885
+      pv: ami-7350eb1c
+    eu-west-1:
+      hvm: ami-bbaf0ac2
+      pv: ami-a5ae0bdc
+    eu-west-2:
+      hvm: ami-c3978aa7
+      pv: ami-fa908d9e
+    sa-east-1:
+      hvm: ami-181c6474
+      pv: ami-051b6369
+    us-east-1:
+      hvm: ami-a89d3ad2
+      pv: ami-eb9b3c91
+    us-east-2:
+      hvm: ami-1c81ad79
+      pv: ami-2280ac47
+    us-gov-west-1:
+      hvm: ami-644dc005
+      pv: ami-674dc006
+    us-west-1:
+      hvm: ami-23566a43
+      pv: ami-cf566aaf
+    us-west-2:
+      hvm: ami-7c488704
+      pv: ami-af4d82d7
+
+Conditions:
+  isExisting: !Equals [ {"Ref": "ClusterState"}, "existing" ]
+
+Resources:
+  ### Private Subnets ###
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PrivateSubnetCidrPrefix, !Ref PublicSubnetCidrASuffix ] ]
+      AvailabilityZone: !Ref SubnetAZA
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PrivateSubnetCidrPrefix, !Ref PublicSubnetCidrBSuffix ] ]
+      AvailabilityZone: !Ref SubnetAZB
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PrivateSubnetCidrPrefix, !Ref PublicSubnetCidrCSuffix ] ]
+      AvailabilityZone: !Ref SubnetAZC
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteTableC:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayA
+
+  PrivateSubnetRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayB
+
+  PrivateSubnetRouteC:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableC
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayC
+
+  PrivateSubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateSubnetRouteTableA
+
+  PrivateSubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateSubnetRouteTableB
+
+  PrivateSubnetRouteTableAssociationC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateSubnetRouteTableC
+
+  NATEIPA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATEIPB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATEIPC:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATEIPA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+
+  NATGatewayB:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATEIPB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+
+  NATGatewayC:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATEIPC.AllocationId
+      SubnetId: !Ref PublicSubnetA
+
+  ### Public Subnets ###
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrASuffix ] ]
+      AvailabilityZone: !Ref SubnetAZA
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrBSuffix ] ]
+      AvailabilityZone: !Ref SubnetAZB
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrCSuffix ] ]
+      AvailabilityZone: !Ref SubnetAZC
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PublicSubnetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  PublicSubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  PublicSubnetRouteTableAssociationC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access via port 22
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: '0.0.0.0/0'
+
+  BastionHost:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [ RegionToImageMap, !Ref "AWS::Region", hvm ]
+      InstanceType: t2.micro
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroupIds: [ !Ref BastionSecurityGroup ]
+      KeyName: !Ref KeyName
+
+  BastionRecordSet:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      HostedZoneId: !Ref HostedZone
+      Name: !Join [ ".", [ "bastion", !Ref DomainName, "" ] ]
+      Type: A
+      TTL: 60
+      ResourceRecords:
+        - !GetAtt [ "BastionHost", "PublicIp" ]
+
+  AutoScalingNotificationTopic:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      DisplayName: "Controller AutoScaling Events"
+      Subscription:
+        - Protocol: lambda
+          Endpoint: !GetAtt [ AutoScalingDNSUpdateLambda, Arn ]
+
+  ControllerAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PrivateSubnetC
+      LaunchConfigurationName:
+        Ref: ControllerLaunchConfiguration
+      DesiredCapacity: !Ref ControllerPoolSize
+      MaxSize: !Ref ControllerPoolSize
+      MinSize: !Ref ControllerPoolSize
+      LoadBalancerNames:
+        - !Ref ControllerELB
+      NotificationConfigurations:
+        - NotificationTypes:
+            - "autoscaling:EC2_INSTANCE_LAUNCH"
+            - "autoscaling:EC2_INSTANCE_TERMINATE"
+          TopicARN: !Ref AutoScalingNotificationTopic
+      Tags:
+      - Key: StackName
+        PropagateAtLaunch: true
+        Value: !Ref AWS::StackName
+      - Key: KubernetesCluster
+        PropagateAtLaunch: true
+        Value: !Ref DomainName
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MaxBatchSize: 1
+        MinInstancesInService: 2
+        WaitOnResourceSignals: true
+        PauseTime: PT1H
+  AutoScalingDNSUpdateLambda:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Role: !GetAtt [ AutoScalingDNSUpdateLambdaRole, Arn ]
+      Runtime: python3.6
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import json
+          domain = "${DomainName}"
+          hostedZoneID= "${HostedZone}"
+          prefix = 'controller-'
+          ec2 = boto3.client('ec2')
+          route53 = boto3.client('route53')
+          autoscaling = boto3.client('autoscaling')
+
+          def lambda_handler(event, context):
+            print('Processing event: {}'.format(event))
+            record = event['Records'][0]
+            message = json.loads(record['Sns']['Message'])
+
+            asgis = autoscaling.describe_auto_scaling_groups(
+              AutoScalingGroupNames = [ message['AutoScalingGroupName'] ],
+              MaxRecords = 1
+            )['AutoScalingGroups'][0]['Instances']
+            print('Found instance ids: {}'.format(asgis))
+
+            reservations = ec2.describe_instances(
+              InstanceIds = list(map(lambda i: i['InstanceId'], asgis))
+            )['Reservations']
+
+            instances = [ y for x in list(map(lambda r: r['Instances'],
+              reservations)) for y in x ]
+            print('Found instances: {}'.format(instances))
+
+            changes = [{
+              'Action': 'UPSERT',
+              'ResourceRecordSet': {
+                'Type': 'SRV',
+                'Name': '_etcd-server-ssl._tcp.' + domain,
+                'TTL': 60,
+                'ResourceRecords': list(map(
+                  lambda i: { 'Value': '0 0 2380 ' + i['PrivateDnsName'] },
+                  instances
+                ))
+              }
+            }, {
+              'Action': 'UPSERT',
+              'ResourceRecordSet': {
+                'Type': 'SRV',
+                'Name': '_etcd-client-ssl._tcp.' + domain,
+                'TTL': 60,
+                'ResourceRecords': list(map(
+                  lambda i: { 'Value': '0 0 2379 ' + i['PrivateDnsName'] },
+                  instances
+                ))
+              }
+            }]
+
+            print('Applying these Changes: {}'.format(changes))
+            route53.change_resource_record_sets(HostedZoneId=hostedZoneID,
+              ChangeBatch={ 'Changes': changes }
+            )
+
+
+  LambdaInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref AutoScalingNotificationTopic
+      FunctionName: !GetAtt [ AutoScalingDNSUpdateLambda, Arn ]
+
+  AutoScalingDNSUpdateLambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DeleteNetworkInterface"
+                  - "ec2:DescribeInstances"
+                  - "autoscaling:DescribeAutoScalingGroups"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - "route53:GetChange"
+                Resource:
+                  - "*"
+              - Effect: Allow
+                Action:
+                  - "route53:ChangeResourceRecordSets"
+                  - "route53:ListResourceRecordSets"
+                Resource: !Sub
+                  - "arn:aws:route53:::hostedzone/${HostedZone}"
+                  - { HostedZone: !Ref HostedZone }
+
+  PolicyController:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: "k8s-controller"
+      Path: /
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - "ec2:Describe*"
+              - "elasticloadbalancing:*"
+              - "autoscaling:DescribeAutoScalingGroups"
+              - "autoscaling:DescribeLaunchConfigurations"
+              - "ec2:CreateRoute"
+            Resource:
+              - "*"
+          - Effect: Allow
+            Action:
+              - "ec2:AuthorizeSecurityGroup*"
+              - "ec2:DeleteSecurityGroup"
+              - "ec2:ModifyInstanceAttribute"
+              - "ec2:CreateTags"
+              - "ec2:DeleteRoute"
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref AWS::StackId
+          - Effect: Allow
+            Action:
+              - "autoscaling:SetDesiredCapacity"
+              - "autoscaling:TerminateInstanceInAutoScalingGroup"
+            Resource:
+              - !Sub "arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${WorkerAutoScalingGroup}"
+          - Effect: Allow
+            Action:
+              - "s3:Get*"
+              - "s3:List*"
+              - "s3:Head*"
+            Resource:
+              - !Sub
+                - "arn:aws:s3:::${assetBucket}/${domain}/*"
+                - assetBucket: !Ref assetBucket
+                  domain: !Ref DomainName
+              - !Sub
+                - "arn:aws:s3:::${assetBucket}/${domain}"
+                - assetBucket: !Ref assetBucket
+                  domain: !Ref DomainName
+
+  ControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref PolicyController
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+
+  ControllerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ControllerRole
+
+  ControllerLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [ RegionToImageMap, !Ref "AWS::Region", hvm ]
+      InstanceType: !Ref ControllerInstanceType
+      IamInstanceProfile: !GetAtt [ ControllerInstanceProfile, Arn ]
+      SecurityGroups:
+        - !Ref ControllerSecurityGroup
+      UserData:
+        # FIXME: "user" { "name": "etcd" } somehow isn't working. Working
+        # around by chown in systemd unit.
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              {
+                "ignition": {
+                  "version": "2.1.0",
+                  "config": {}
+                },
+                "storage": {
+                  "files": [{
+                    "filesystem": "root",
+                    "path": "/etc/ssl/etcd/server.crt",
+                    "user": { "name": "etcd" },
+                    "mode": 420,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/etcd/server.pem" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/ssl/etcd/server.key",
+                    "user": { "name": "etcd" },
+                    "mode": 384,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/etcd/server-key.pem" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/ssl/etcd/peer.crt",
+                    "user": { "name": "etcd" },
+                    "mode": 420,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/etcd/peer.pem" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/ssl/etcd/peer.key",
+                    "user": { "name": "etcd" },
+                    "mode": 384,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/etcd/peer-key.pem" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/ssl/etcd/ca.crt",
+                    "user": { "name": "etcd" },
+                    "mode": 420,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/etcd/ca.pem" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes/pki/ca.crt",
+                    "mode": 420,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/ca.crt" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes/pki/ca.key",
+                    "mode": 384,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/ca.key" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes/pki/sa.pub",
+                    "mode": 420,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/sa.pub" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes/pki/sa.key",
+                    "mode": 384,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/sa.key" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes/pki/front-proxy-ca.crt",
+                    "mode": 420,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/front-proxy-ca.crt" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes/pki/front-proxy-ca.key",
+                    "mode": 384,
+                    "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/front-proxy-ca.key" }
+                  }, {
+                   "filesystem": "root",
+                    "path": "/etc/kubernetes/cloud-config",
+                    "mode": 420,
+                    "contents": { "source": "data:;base64,${cloudProviderConfig}" }
+                  },
+                  {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes/controller.yaml",
+                    "mode": 420,
+                    "contents": { "source": "data:;base64,${controllerConfig}" }
+                  },
+                  {
+                    "filesystem": "root",
+                    "path": "/etc/etcd.env",
+                     "mode": 420,
+                    "contents": { "source": "data:;base64,${etcdEnv}" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/etcdctl-wrapper",
+                    "mode": 493,
+                    "contents": { "source": "data:;base64,${etcdctlWrapper}" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/etcd-member-remove",
+                    "mode": 493,
+                    "contents": { "source": "data:;base64,${etcdMemberRemove}" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/etcd-member-add",
+                    "mode": 493,
+                    "contents": { "source": "data:;base64,${etcdMemberAdd}" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/etcd-signal-health",
+                    "mode": 493,
+                    "contents": { "source": "data:;base64,${etcdSignalHealth}" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/opt/bin/patch-kube-proxy-cm",
+                    "mode": 493,
+                    "contents": { "source": "data:;base64,${patchKubeProxyCM}" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/opt/bin/kubeadm",
+                    "mode": 493,
+                    "contents": { "source": "${kubeadmURL}" }
+                  }, {
+                    "filesystem": "root",
+                    "path": "/etc/kubernetes.env",
+                     "mode": 420,
+                    "contents": { "source": "data:;base64,${kubernetesEnv}" }
+                  }]
+                },
+                "systemd": {
+                  "units": [{
+                    "name": "etcd-member.service",
+                    "enable": true,
+                    "dropins": [{
+                      "name": "20-etcd-member.conf",
+                      "contents": "${etcdUnit}"
+                    }]
+                  }, {
+                    "name": "kubelet.service",
+                    "enable": false,
+                    "contents": "${kubeletUnit}"
+                  }, {
+                    "name": "kubeadm.service",
+                    "enable": true,
+                    "contents": "${kubeadmUnit}"
+                  }, {
+                    "name": "update-engine.service",
+                    "mask": true
+                  }, {
+                    "name": "locksmithd.service",
+                    "mask": true
+                  }]
+                },
+                "networkd": {},
+                "passwd": {}
+              }
+            - etcdUnit: !Join
+              - "\\n"
+              - !Split
+                - "\n"
+                - !Join
+                  - "\\\""
+                  - !Split
+                    - "\""
+                    - !Join
+                      - "\\\\"
+                      - !Split
+                        - "\\"
+                        - !FindInMap [ Assets, etcd, unit ]
+              kubeletUnit: !Join
+              - "\\n"
+              - !Split
+                - "\n"
+                - !Join
+                  - "\\\""
+                  - !Split
+                    - "\""
+                    - !Join
+                      - "\\\\"
+                      - !Split
+                        - "\\"
+                        - !FindInMap [ Assets, kubelet, unit ]
+              kubeadmUnit: !Join
+              - "\\n"
+              - !Split
+                - "\n"
+                - !Join
+                  - "\\\""
+                  - !Split
+                    - "\""
+                    - !Join
+                      - "\\\\"
+                      - !Split
+                        - "\\"
+                        - !FindInMap [ Assets, kubeadm, unit ]
+              # Scripts
+              etcdctlWrapper:
+                Fn::Base64: !FindInMap [ Assets, etcd, etcdctlWrapper ]
+              etcdMemberRemove:
+                Fn::Base64: !FindInMap [ Assets, etcd, etcdMemberRemove ]
+              etcdMemberAdd:
+                Fn::Base64: !FindInMap [ Assets, etcd, etcdMemberAdd ]
+              etcdSignalHealth:
+                Fn::Base64: !Sub
+                  - |
+                    #!/bin/bash
+                    set -euo pipefail
+                    echo "Wait for cluster-health"
+                    while ! /etc/etcdctl-wrapper cluster-health; do sleep 1; done
+                    echo "Wait for etcd to join cluster"
+                    while ! /etc/etcdctl-wrapper member list | grep $(hostname); do sleep 1; done
+                    echo "Signaling success"
+                    docker run --rm rochacon/cfn-bootstrap cfn-signal \
+                      --resource ControllerAutoScalingGroup \
+                      --stack ${StackName} \
+                      --region ${Region} || true # Ignore if signaling failed
+                  - StackName: !Ref AWS::StackName
+                    Region: !Ref AWS::Region
+              patchKubeProxyCM:
+                Fn::Base64: !FindInMap [ Assets, kubeadm, patchKubeProxyCM ]
+              # Environment files
+              etcdEnv:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      ETCD_DISCOVERY_SRV=${DomainName}
+                      ETCD_INITIAL_CLUSTER_TOKEN=${DomainName}
+                      ETCD_INITIAL_CLUSTER_STATE=${ClusterState}
+                    - DomainName: !Ref DomainName
+                      ClusterState: !Ref ClusterState
+              kubernetesEnv:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      KUBELET_IMAGE_TAG=${KubeletImageTag}
+                      KUBELET_API_SERVERS=api.${DomainName}
+                      KUBELET_CLUSTER_DOMAIN=${DomainName}
+                    - KubeletImageTag: !Ref KubeletImageTag
+                      DomainName: !Ref DomainName
+              cloudProviderConfig:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      [Global]
+                      KubernetesClusterTag=${DomainName}
+                      KubernetesClusterID=${DomainName}
+                    - DomainName: !Ref DomainName
+              controllerConfig:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      apiVersion: kubeadm.k8s.io/v1alpha1
+                      kind: MasterConfiguration
+                      api:
+                        advertiseAddress: api.${DomainName}:6443
+                      etcd:
+                        endpoints:
+                        - https://localhost:2379
+                        caFile: /etc/ssl/etcd/ca.crt
+                        certFile: /etc/ssl/etcd/peer.crt
+                        keyFile: /etc/ssl/etcd/peer.key
+                      kubernetesVersion: ${KubeVersion}
+                      cloudProvider: aws
+                      networking:
+                        dnsDomain: ${DomainName}
+                        podSubnet: 10.244.0.0/16
+                      apiServerExtraArgs:
+                        apiserver-count: "${ApiserverCount}"
+                      apiServerExtraVolumes:
+                        - name: ca-certs
+                          hostPath: /usr/share/ca-certificates
+                          mountPath: /etc/ssl/certs
+                      apiServerCertSANs:
+                        - api.${DomainName}
+                      controllerManagerExtraArgs:
+                        flex-volume-plugin-dir: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
+                        horizontal-pod-autoscaler-downscale-delay: 30m0s
+                      controllerManagerExtraVolumes:
+                        - name: ca-certs
+                          hostPath: /usr/share/ca-certificates
+                          mountPath: /etc/ssl/certs
+                        - name: flexvolume-dir
+                          hostPath: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
+                          mountPath: /usr/libexec/kubernetes/kubelet-plugins/volume/exec
+                    - DomainName: !Ref DomainName
+                      KubeVersion: !Ref KubeVersion
+                      ApiserverCount: !Ref ControllerPoolSize
+
+              domain: !Ref DomainName
+              kubeadmURL: !Join
+                - "/"
+                - [!Ref KubeadmURLRoot, !Ref KubeadmVersion, !Ref KubeadmURLPath]
+
+  # FIXME: Lock down to only master coms
+  ControllerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCID
+      GroupDescription: Kubernetes Controller SecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+
+  ControllerELB:
+    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
+    Properties:
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+        - !Ref PublicSubnetC
+      CrossZone: true
+      SecurityGroups:
+        - !Ref ControllerSecurityGroup
+      HealthCheck:
+        HealthyThreshold: 2
+        Interval: 30
+        Target: TCP:6443
+        UnhealthyThreshold: 4
+        Timeout: 10
+      Listeners:
+        - LoadBalancerPort: 6443
+          InstancePort: 6443
+          Protocol: TCP
+
+  HostedZoneDelegation:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      HostedZoneId: !Ref ParentZoneID
+      Name: !Ref DomainName
+      Type: NS
+      TTL: 60
+      ResourceRecords: !GetAtt [ HostedZone, NameServers ]
+
+  HostedZone:
+    Type: "AWS::Route53::HostedZone"
+    Properties:
+      Name: !Ref DomainName
+
+  RecordSet:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      HostedZoneId: !Ref HostedZone
+      Name: !Join [ ".", [ !Ref ControllerSubdomain, !Ref DomainName, "" ] ]
+      Type: CNAME
+      TTL: 60
+      ResourceRecords:
+        - !GetAtt [ "ControllerELB", "DNSName" ]
+
+################################# WORKERS ######################################
+
+  # FIXME: Lock down to only worker coms
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCID
+      GroupDescription: Kubernetes Controller SecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+
+  PolicyWorker:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: "k8s-worker"
+      Path: /
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - "ec2:Describe*"
+              - "ec2:AttachVolume"
+              - "ec2:DetachVolume"
+            Resource:
+              - "*"
+          - Effect: Allow
+            Action:
+              - "s3:Get*"
+              - "s3:List*"
+              - "s3:Head*"
+            Resource:
+              - !Sub
+                - "arn:aws:s3:::${assetBucket}/${domain}/kubeadm/admin.conf"
+                - assetBucket: !Ref assetBucket
+                  domain: !Ref DomainName
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref PolicyWorker
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+
+  WorkerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref WorkerRole
+
+  WorkerLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Condition: isExisting
+    Properties:
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [ RegionToImageMap, !Ref "AWS::Region", hvm ]
+      InstanceType: !Ref WorkerInstanceType
+      BlockDeviceMappings:
+        - DeviceName: '/dev/xvda'
+          Ebs:
+            VolumeSize:
+              Ref: WorkerVolumeSize
+      IamInstanceProfile: !GetAtt [ WorkerInstanceProfile, Arn ]
+      SecurityGroups:
+        - !Ref WorkerSecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              {
+                "ignition": {
+                  "version": "2.1.0",
+                  "config": {}
+                },
+                "storage": {
+                  "files": [{
+                      "filesystem": "root",
+                      "path": "/etc/kubernetes/cloud-config",
+                      "mode": 420,
+                      "contents": { "source": "data:;base64,${cloudProviderConfig}" }
+                    }, {
+                      "filesystem": "root",
+                      "path": "/etc/kubernetes/admin.conf",
+                      "mode": 384,
+                      "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/admin.conf" }
+                    }, {
+                      "filesystem": "root",
+                      "path": "/etc/kubernetes.env",
+                      "mode": 420,
+                      "contents": { "source": "data:;base64,${kubernetesEnv}" }
+                    }, {
+                      "filesystem": "root",
+                      "path": "/opt/bin/cfn-signal-success",
+                      "mode": 493,
+                      "contents": { "source": "data:;base64,${cfnSignalSuccess}" }
+                    }
+                  ]
+                },
+                "systemd": {
+                  "units": [{
+                    "name": "kubelet.service",
+                    "enable": true,
+                    "contents": "${kubeletUnit}"
+                  }, {
+                    "name": "update-engine.service",
+                    "mask": true
+                  }, {
+                    "name": "locksmithd.service",
+                    "mask": true
+                  }]
+                },
+                "networkd": {},
+                "passwd": {}
+              }
+            - kubeletUnit: !Join
+              - "\\n"
+              - !Split
+                - "\n"
+                - !Join
+                  - "\\\""
+                  - !Split
+                    - "\""
+                    - !Join
+                      - "\\\\"
+                      - !Split
+                        - "\\"
+                        - !FindInMap [ Assets, kubelet, unit ]
+
+              # Environment files
+              kubernetesEnv:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      KUBELET_IMAGE_TAG=${KubeletImageTag}
+                      KUBELET_API_SERVERS=api.${DomainName}
+                      KUBELET_CLUSTER_DOMAIN=${DomainName}
+                    - KubeletImageTag: !Ref KubeletImageTag
+                      DomainName: !Ref DomainName
+              cloudProviderConfig:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      [Global]
+                      KubernetesClusterTag=${DomainName}
+                      KubernetesClusterID=${DomainName}
+                    - DomainName: !Ref DomainName
+              cfnSignalSuccess:
+                Fn::Base64: !Sub
+                  - |
+                    #!/bin/bash
+                    set -euo pipefail
+                    echo "Signaling success"
+                    docker run --rm rochacon/cfn-bootstrap cfn-signal \
+                      --resource $1 \
+                      --stack ${StackName} \
+                      --region ${Region} || true # Ignore if signaling failed
+                  - StackName: !Ref AWS::StackName
+                    Region: !Ref AWS::Region
+              domain: !Ref DomainName
+
+  WorkerAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Condition: isExisting
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PrivateSubnetC
+      LaunchConfigurationName:
+        Ref: WorkerLaunchConfiguration
+      MaxSize: !Ref WorkerPoolSizeMax
+      MinSize: !Ref WorkerPoolSizeMin
+      Tags:
+      - Key: StackName
+        PropagateAtLaunch: true
+        Value: !Ref AWS::StackName
+      - Key: KubernetesCluster
+        PropagateAtLaunch: true
+        Value: !Ref DomainName
+        # FIXME: We should check that cluster is healthy and signal success
+        #    UpdatePolicy:
+        #      AutoScalingRollingUpdate:
+        #        MaxBatchSize: 1
+        #        MinInstancesInService: 1
+        #        PauseTime: PT15M
+        #        WaitOnResourceSignals: true
