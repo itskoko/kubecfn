@@ -1,5 +1,6 @@
 # kubecfn
-*Cloudformation based installer for secure multi-node kubeadm cluster.*
+*Cloudformation based installer for reasonably secure multi-node kubeadm
+cluster.*
 
 # Operations
 You can either edit the Makefile or use environment variable to override
