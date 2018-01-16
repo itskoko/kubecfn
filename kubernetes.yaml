@@ -1254,7 +1254,6 @@ Resources:
 
   WorkerLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
-    Condition: isExisting
     Properties:
       KeyName: !Ref KeyName
       ImageId: !FindInMap [ RegionToImageMap, !Ref "AWS::Region", hvm ]
@@ -1364,7 +1363,6 @@ Resources:
 
   WorkerAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
-    Condition: isExisting
     Properties:
       VPCZoneIdentifier:
         - !Ref PrivateSubnetA
