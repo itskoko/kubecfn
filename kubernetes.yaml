@@ -1047,7 +1047,7 @@ Resources:
                     echo "Wait for etcd to join cluster"
                     while ! /etc/etcdctl-wrapper member list | grep $(hostname); do sleep 1; done
                     echo "Signaling success"
-                    docker run --rm rochacon/cfn-bootstrap cfn-signal \
+                    docker run --rm --net=host rochacon/cfn-bootstrap cfn-signal \
                       --resource ControllerAutoScalingGroup \
                       --stack ${StackName} \
                       --region ${Region} || true # Ignore if signaling failed
