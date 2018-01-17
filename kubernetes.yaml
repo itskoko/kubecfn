@@ -774,6 +774,7 @@ Resources:
               - "autoscaling:DescribeAutoScalingGroups"
               - "autoscaling:DescribeLaunchConfigurations"
               - "ec2:CreateRoute"
+              - "ec2:CreateSecurityGroup"
             Resource:
               - "*"
           - Effect: Allow
@@ -1196,7 +1197,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId: !Ref VPCID
-      GroupDescription: Kubernetes Controller SecurityGroup
+      GroupDescription: Kubernetes Worker SecurityGroup
       SecurityGroupIngress:
         - CidrIp: "0.0.0.0/0"
           IpProtocol: tcp
