@@ -36,23 +36,20 @@ Parameters:
 
   KubeVersion:
     Type: String
-    Default: 1.8.4
+    Default: 1.9.2
 
   KubeletImageTag:
     Type: String
-    Default: v1.8.4_coreos.0
+    Default: v1.9.2_coreos.0
 
   KubeadmVersion:
     Type: String
-    # Default: v1.8.4
-    # https://storage.googleapis.com/kubernetes-release-dev/ci-cross/latest.txt
-    Default: v1.10.0-alpha.0.724+160270800f0995
+    Default: v1.9.2
 
   KubeadmURLRoot:
     Type: String
     Description: No trailing /
-    # Default: https://storage.googleapis.com/kubernetes-release/release
-    Default: https://storage.googleapis.com/kubernetes-release-dev/ci-cross
+    Default: https://storage.googleapis.com/kubernetes-release/release
 
   KubeadmURLPath:
     Type: String
