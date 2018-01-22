@@ -782,15 +782,23 @@ Resources:
               - "*"
           - Effect: Allow
             Action:
-              - "ec2:AuthorizeSecurityGroup*"
-              - "ec2:DeleteSecurityGroup"
               - "ec2:ModifyInstanceAttribute"
-              - "ec2:DeleteRoute"
+              - "ec2:AuthorizeSecurityGroup*" # k8s needs to run this on the k8s managed and stack SG below
             Resource:
               - "*"
             Condition:
               StringEquals:
                 "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref AWS::StackId
+          - Effect: Allow
+            Action:
+              - "ec2:AuthorizeSecurityGroup*"
+              - "ec2:DeleteSecurityGroup"
+              - "ec2:DeleteRoute"
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                "ec2:ResourceTag/KubernetesCluster": !Ref DomainName
           - Effect: Allow
             Action:
               - "autoscaling:SetDesiredCapacity"
