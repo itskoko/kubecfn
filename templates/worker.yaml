@@ -1,0 +1,335 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  KeyName:
+    Description: Existing EC2 KeyPair for SSH access.
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    Default: cfn-kubernetes
+
+  DomainName:
+    Type: String
+
+  KubeletImageTag:
+    Type: String
+    Default: v1.9.2_coreos.0
+
+  WorkerInstanceType:
+    Description: EC2 instance type for controller nodes.
+    Type: String
+    Default: c5.4xlarge
+
+  WorkerPoolSizeMin:
+    Description: Number of Worker Nodes
+    Type: Number
+    Default: 2
+
+  WorkerPoolSizeMax:
+    Description: Number of Worker Nodes
+    Type: Number
+    Default: 25
+
+  WorkerVolumeSize:
+    Description: Worker volume size in GB
+    Type: Number
+    Default: 100
+
+  VPCID:
+    Description: Existing VPC with attached internet gateway to use for this cluster.
+    Type: AWS::EC2::VPC::Id
+
+  PrivateSubnetA:
+    Type: String
+
+  PrivateSubnetB:
+    Type: String
+
+  PrivateSubnetC:
+    Type: String
+
+  assetBucket:
+    Type: String
+
+Mappings:
+  Assets:
+    kubelet:
+      unit: |
+        [Unit]
+        Description=Kubernetes Kubelet Server
+        Documentation=https://github.com/kubernetes/kubernetes
+        Requires=coreos-metadata.service
+        After=coreos-metadata.service
+
+        [Service]
+        EnvironmentFile=/etc/kubernetes.env
+        Environment="RKT_RUN_ARGS=--uuid-file-save=/var/run/kubelet-pod.uuid \
+          --volume dns,kind=host,source=/etc/resolv.conf \
+          --volume cni-opt,kind=host,source=/opt/cni \
+          --volume cni-etc,kind=host,source=/etc/cni \
+          --mount volume=dns,target=/etc/resolv.conf \
+          --mount volume=cni-opt,target=/opt/cni \
+          --mount volume=cni-etc,target=/etc/cni"
+        ExecStartPre=/bin/mkdir -p /opt/cni /etc/cni
+        ExecStartPre=-/usr/bin/rkt rm --uuid-file=/var/run/kubelet-pod.uui
+        ExecStart=/usr/lib/coreos/kubelet-wrapper \
+          --kubeconfig=/etc/kubernetes/admin.conf \
+          --pod-manifest-path=/etc/kubernetes/manifests \
+          --cloud-provider=aws \
+          --cloud-config=/etc/kubernetes/cloud-config \
+          --network-plugin=cni \
+          --pod-cidr=10.244.0.0/16 \
+          --cluster-dns=10.96.0.10 \
+          --cluster-domain=${KUBELET_CLUSTER_DOMAIN} \
+          --allow-privileged
+        ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
+        [Install]
+        WantedBy=multi-user.target
+
+  # Generate with:
+  # curl -L https://coreos.com/dist/aws/aws-stable.json \
+  #   | jq 'to_entries|map(select(.key != "release_info"))|from_entries' \
+  #   | json2yaml | sed 's/^/    /'
+  RegionToImageMap:
+    ap-northeast-1:
+      hvm: ami-8f65c4e9
+      pv: ami-7d69c81b
+    ap-northeast-2:
+      hvm: ami-5901a437
+      pv: ami-6b02a705
+    ap-south-1:
+      hvm: ami-8ad89ae5
+      pv: ami-1fd89a70
+    ap-southeast-1:
+      hvm: ami-64f1b007
+      pv: ami-c4f2b3a7
+    ap-southeast-2:
+      hvm: ami-6e89660c
+      pv: ami-27896645
+    ca-central-1:
+      hvm: ami-91853df5
+      pv: ami-fd853d99
+    cn-north-1:
+      hvm: ami-d727f4ba
+      pv: ami-d627f4bb
+    eu-central-1:
+      hvm: ami-ea53e885
+      pv: ami-7350eb1c
+    eu-west-1:
+      hvm: ami-bbaf0ac2
+      pv: ami-a5ae0bdc
+    eu-west-2:
+      hvm: ami-c3978aa7
+      pv: ami-fa908d9e
+    sa-east-1:
+      hvm: ami-181c6474
+      pv: ami-051b6369
+    us-east-1:
+      hvm: ami-a89d3ad2
+      pv: ami-eb9b3c91
+    us-east-2:
+      hvm: ami-1c81ad79
+      pv: ami-2280ac47
+    us-gov-west-1:
+      hvm: ami-644dc005
+      pv: ami-674dc006
+    us-west-1:
+      hvm: ami-23566a43
+      pv: ami-cf566aaf
+    us-west-2:
+      hvm: ami-7c488704
+      pv: ami-af4d82d7
+
+Resources:
+  # FIXME: Lock down to only worker coms
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCID
+      GroupDescription: Kubernetes Worker SecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+
+  PolicyWorker:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: "k8s-worker"
+      Path: /
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - "ec2:Describe*"
+            Resource:
+              - "*"
+          - Effect: Allow
+            Action:
+              - "s3:Get*"
+              - "s3:List*"
+              - "s3:Head*"
+            Resource:
+              - !Sub
+                - "arn:aws:s3:::${assetBucket}/${domain}/kubeadm/admin.conf"
+                - assetBucket: !Ref assetBucket
+                  domain: !Ref DomainName
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref PolicyWorker
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+
+  WorkerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref WorkerRole
+
+  WorkerLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [ RegionToImageMap, !Ref "AWS::Region", hvm ]
+      InstanceType: !Ref WorkerInstanceType
+      BlockDeviceMappings:
+        - DeviceName: '/dev/xvda'
+          Ebs:
+            VolumeSize:
+              Ref: WorkerVolumeSize
+      IamInstanceProfile: !GetAtt [ WorkerInstanceProfile, Arn ]
+      SecurityGroups:
+        - !Ref WorkerSecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              {
+                "ignition": {
+                  "version": "2.1.0",
+                  "config": {}
+                },
+                "storage": {
+                  "files": [{
+                      "filesystem": "root",
+                      "path": "/etc/kubernetes/cloud-config",
+                      "mode": 420,
+                      "contents": { "source": "data:;base64,${cloudProviderConfig}" }
+                    }, {
+                      "filesystem": "root",
+                      "path": "/etc/kubernetes/admin.conf",
+                      "mode": 384,
+                      "contents": { "source": "s3://${assetBucket}/${domain}/kubeadm/admin.conf" }
+                    }, {
+                      "filesystem": "root",
+                      "path": "/etc/kubernetes.env",
+                      "mode": 420,
+                      "contents": { "source": "data:;base64,${kubernetesEnv}" }
+                    }, {
+                      "filesystem": "root",
+                      "path": "/opt/bin/cfn-signal-success",
+                      "mode": 493,
+                      "contents": { "source": "data:;base64,${cfnSignalSuccess}" }
+                    }
+                  ]
+                },
+                "systemd": {
+                  "units": [{
+                    "name": "kubelet.service",
+                    "enable": true,
+                    "contents": "${kubeletUnit}"
+                  }, {
+                    "name": "update-engine.service",
+                    "mask": true
+                  }, {
+                    "name": "locksmithd.service",
+                    "mask": true
+                  }]
+                },
+                "networkd": {},
+                "passwd": {}
+              }
+            - kubeletUnit: !Join
+              - "\\n"
+              - !Split
+                - "\n"
+                - !Join
+                  - "\\\""
+                  - !Split
+                    - "\""
+                    - !Join
+                      - "\\\\"
+                      - !Split
+                        - "\\"
+                        - !FindInMap [ Assets, kubelet, unit ]
+
+              # Environment files
+              kubernetesEnv:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      KUBELET_IMAGE_TAG=${KubeletImageTag}
+                      KUBELET_API_SERVERS=api.${DomainName}
+                      KUBELET_CLUSTER_DOMAIN=${DomainName}
+                    - KubeletImageTag: !Ref KubeletImageTag
+                      DomainName: !Ref DomainName
+              cloudProviderConfig:
+                Fn::Base64:
+                  Fn::Sub:
+                    - |
+                      [Global]
+                      KubernetesClusterTag=${DomainName}
+                      KubernetesClusterID=${DomainName}
+                    - DomainName: !Ref DomainName
+              cfnSignalSuccess:
+                Fn::Base64: !Sub
+                  - |
+                    #!/bin/bash
+                    set -euo pipefail
+                    echo "Signaling success"
+                    docker run --rm rochacon/cfn-bootstrap cfn-signal \
+                      --resource $1 \
+                      --stack ${StackName} \
+                      --region ${Region} || true # Ignore if signaling failed
+                  - StackName: !Ref AWS::StackName
+                    Region: !Ref AWS::Region
+              domain: !Ref DomainName
+
+  WorkerAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PrivateSubnetC
+      LaunchConfigurationName:
+        Ref: WorkerLaunchConfiguration
+      MaxSize: !Ref WorkerPoolSizeMax
+      MinSize: !Ref WorkerPoolSizeMin
+      Tags:
+      - Key: StackName
+        PropagateAtLaunch: true
+        Value: !Ref AWS::StackName
+      - Key: KubernetesCluster
+        PropagateAtLaunch: true
+        Value: !Ref DomainName
+        # FIXME: We should check that cluster is healthy and signal success
+        #    UpdatePolicy:
+        #      AutoScalingRollingUpdate:
+        #        MaxBatchSize: 1
+        #        MinInstancesInService: 1
+        #        PauseTime: PT15M
+        #        WaitOnResourceSignals: true

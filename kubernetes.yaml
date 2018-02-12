@@ -804,7 +804,7 @@ Resources:
               - "autoscaling:SetDesiredCapacity"
               - "autoscaling:TerminateInstanceInAutoScalingGroup"
             Resource:
-              - !Sub "arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${WorkerAutoScalingGroup}"
+              - !Sub "arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/*"
           - Effect: Allow
             Action:
               - "s3:Get*"
@@ -1395,3 +1395,18 @@ Resources:
         #        MinInstancesInService: 1
         #        PauseTime: PT15M
         #        WaitOnResourceSignals: true
+
+  WorkerPoolDefault:
+    Type: "AWS::CloudFormation::Stack"
+    Properties:
+      TemplateURL: !Sub
+        - "https://s3.amazonaws.com/${assetBucket}/${DomainName}/templates/worker.yaml"
+        - assetBucket: !Ref assetBucket
+          DomainName:  !Ref DomainName
+      Parameters:
+        DomainName:          !Ref DomainName
+        assetBucket:         !Ref assetBucket
+        VPCID:               !Ref VPCID
+        PrivateSubnetA:      !Ref PrivateSubnetA
+        PrivateSubnetB:      !Ref PrivateSubnetB
+        PrivateSubnetC:      !Ref PrivateSubnetC

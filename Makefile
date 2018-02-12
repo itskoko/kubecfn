@@ -51,7 +51,8 @@ OBJS := $(BUILD_TLS) $(BUILD_TLS)/ca.pem $(BUILD_TLS)/server-key.pem \
 
 all: $(OBJS)
 upload: all
-	aws s3 cp --recursive $(BUILD_TLS) s3://$(ASSET_BUCKET)/$(DOMAIN_NAME)/etcd
+	aws s3 cp --recursive templates/       s3://$(ASSET_BUCKET)/$(DOMAIN_NAME)/templates
+	aws s3 cp --recursive $(BUILD_TLS)     s3://$(ASSET_BUCKET)/$(DOMAIN_NAME)/etcd
 	aws s3 cp --recursive $(BUILD_KUBEADM) s3://$(ASSET_BUCKET)/$(DOMAIN_NAME)/kubeadm
 
 require-op:
