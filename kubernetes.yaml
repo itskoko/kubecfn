@@ -1194,3 +1194,44 @@ Resources:
         PrivateSubnetA:      !Ref PrivateSubnetA
         PrivateSubnetB:      !Ref PrivateSubnetB
         PrivateSubnetC:      !Ref PrivateSubnetC
+
+Outputs:
+  WorkerTemplateURL:
+    Value: !Sub
+      - "https://s3.amazonaws.com/${assetBucket}/${DomainName}/templates/worker.yaml"
+      - assetBucket: !Ref assetBucket
+        DomainName:  !Ref DomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerTemplateURL"
+  DomainName:
+    Export:
+      Name: !Sub "${AWS::StackName}-DomainName"
+    Value: !Ref DomainName
+  assetBucket:
+    Export:
+      Name: !Sub "${AWS::StackName}-assetBucket"
+    Value: !Ref assetBucket
+  ParentZoneID:
+    Export:
+      Name: !Sub "${AWS::StackName}-ParentZoneID"
+    Value: !Ref ParentZoneID
+  ControllerSubdomain:
+    Export:
+      Name: !Sub "${AWS::StackName}-ControllerSubdomain"
+    Value: !Ref ControllerSubdomain
+  VPCID:
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCID"
+    Value: !Ref VPCID
+  PrivateSubnetA:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetA"
+    Value: !Ref PrivateSubnetA
+  PrivateSubnetB:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetB"
+    Value: !Ref PrivateSubnetB
+  PrivateSubnetC:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetC"
+    Value: !Ref PrivateSubnetC
