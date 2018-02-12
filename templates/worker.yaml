@@ -14,6 +14,11 @@ Parameters:
     Type: String
     Default: v1.9.2_coreos.0
 
+  Taints:
+    Description: Taints to apply to worker node.
+    Type: String
+    Default: ""
+
   WorkerInstanceType:
     Description: EC2 instance type for controller nodes.
     Type: String
@@ -80,6 +85,7 @@ Mappings:
           --pod-cidr=10.244.0.0/16 \
           --cluster-dns=10.96.0.10 \
           --cluster-domain=${KUBELET_CLUSTER_DOMAIN} \
+          --register-with-taints=${KUBELET_TAINTS} \
           --allow-privileged
         ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
         [Install]
@@ -284,8 +290,10 @@ Resources:
                       KUBELET_IMAGE_TAG=${KubeletImageTag}
                       KUBELET_API_SERVERS=api.${DomainName}
                       KUBELET_CLUSTER_DOMAIN=${DomainName}
+                      KUBELET_TAINTS=${Taints}
                     - KubeletImageTag: !Ref KubeletImageTag
                       DomainName: !Ref DomainName
+                      Taints: !Ref Taints
               cloudProviderConfig:
                 Fn::Base64:
                   Fn::Sub:
