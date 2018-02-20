@@ -1196,6 +1196,10 @@ Resources:
         PrivateSubnetC:      !Ref PrivateSubnetC
 
 Outputs:
+  WorkerRole:
+    Value: !GetAtt WorkerPoolDefault.Outputs.WorkerRole
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerRole"
   WorkerTemplateURL:
     Value: !Sub
       - "https://s3.amazonaws.com/${assetBucket}/${DomainName}/templates/worker.yaml"

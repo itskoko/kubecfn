@@ -349,3 +349,6 @@ Resources:
         #        MinInstancesInService: 1
         #        PauseTime: PT15M
         #        WaitOnResourceSignals: true
+Outputs:
+  WorkerRole:
+    Value: !Ref WorkerRole
