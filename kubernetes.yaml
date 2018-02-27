@@ -762,6 +762,7 @@ Resources:
               - "*"
           - Effect: Allow
             Action:
+              - "ec2:RevokeSecurityGroup*"
               - "ec2:ModifyInstanceAttribute"
               - "ec2:AuthorizeSecurityGroup*" # k8s needs to run this on the k8s managed and stack SG below
             Resource:
@@ -769,6 +770,16 @@ Resources:
             Condition:
               StringEquals:
                 "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref AWS::StackId
+          - Effect: Allow
+            Action:
+              - "ec2:RevokeSecurityGroup*"
+              - "ec2:ModifyInstanceAttribute"
+              - "ec2:AuthorizeSecurityGroup*" # ...for the workers too
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefault
           - Effect: Allow
             Action:
               - "ec2:AuthorizeSecurityGroup*"
@@ -1196,6 +1207,10 @@ Resources:
         PrivateSubnetC:      !Ref PrivateSubnetC
 
 Outputs:
+  ControllerRole:
+    Value: !Ref ControllerRole
+    Export:
+      Name: !Sub "${AWS::StackName}-ControllerRole"
   WorkerRole:
     Value: !GetAtt WorkerPoolDefault.Outputs.WorkerRole
     Export:
@@ -1239,3 +1254,19 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PrivateSubnetC"
     Value: !Ref PrivateSubnetC
+  PublicSubnetA:
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetA"
+    Value: !Ref PublicSubnetA
+  PublicSubnetB:
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetB"
+    Value: !Ref PublicSubnetB
+  PublicSubnetC:
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetC"
+    Value: !Ref PublicSubnetC
+  HostedZone:
+    Export:
+      Name: !Sub "${AWS::StackName}-HostedZone"
+    Value: !Ref HostedZone
