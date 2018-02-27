@@ -785,6 +785,7 @@ Resources:
               - "ec2:AuthorizeSecurityGroup*"
               - "ec2:DeleteSecurityGroup"
               - "ec2:DeleteRoute"
+              - "ec2:RevokeSecurityGroup*"
             Resource:
               - "*"
             Condition:
