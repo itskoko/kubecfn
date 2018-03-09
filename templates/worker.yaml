@@ -24,6 +24,11 @@ Parameters:
     Type: String
     Default: ""
 
+  CPUManagerPolicy:
+    Description: cpu manager policy for kubelet
+    Type: String
+    Default: "none"
+
   WorkerInstanceType:
     Description: EC2 instance type for controller nodes.
     Type: String
@@ -92,6 +97,9 @@ Mappings:
           --cluster-domain=${KUBELET_CLUSTER_DOMAIN} \
           --register-with-taints=${KUBELET_TAINTS} \
           --feature-gates=${KUBELET_FEATURE_GATES} \
+          --cpu-manager-policy=${KUBELET_CPU_MANAGER_POLICY} \
+          --kube-reserved=cpu=100m \
+          --system-reserved=cpu=100m \
           --allow-privileged
         ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
         [Install]
@@ -298,10 +306,12 @@ Resources:
                       KUBELET_CLUSTER_DOMAIN=${DomainName}
                       KUBELET_TAINTS=${Taints}
                       KUBELET_FEATURE_GATES=${FeatureGates}
+                      KUBELET_CPU_MANAGER_POLICY=${CPUManagerPolicy}
                     - KubeletImageTag: !Ref KubeletImageTag
                       DomainName: !Ref DomainName
                       Taints: !Ref Taints
                       FeatureGates: !Ref FeatureGates
+                      CPUManagerPolicy: !Ref CPUManagerPolicy
               cloudProviderConfig:
                 Fn::Base64:
                   Fn::Sub:

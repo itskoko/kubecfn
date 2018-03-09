@@ -46,6 +46,10 @@ Parameters:
     Type: String
     Default: ""
 
+  WorkerCPUManagerPolicy:
+    Type: String
+    Default: "none"
+
   KubeadmVersion:
     Type: String
     Default: v1.9.2
@@ -1204,13 +1208,14 @@ Resources:
         - assetBucket: !Ref assetBucket
           DomainName:  !Ref DomainName
       Parameters:
-        DomainName:     !Ref DomainName
-        FeatureGates:   !Ref WorkerFeatureGates
-        assetBucket:    !Ref assetBucket
-        VPCID:          !Ref VPCID
-        PrivateSubnetA: !Ref PrivateSubnetA
-        PrivateSubnetB: !Ref PrivateSubnetB
-        PrivateSubnetC:      !Ref PrivateSubnetC
+        DomainName:       !Ref DomainName
+        FeatureGates:     !Ref WorkerFeatureGates
+        CPUManagerPolicy: !Ref WorkerCPUManagerPolicy
+        assetBucket:      !Ref assetBucket
+        VPCID:            !Ref VPCID
+        PrivateSubnetA:   !Ref PrivateSubnetA
+        PrivateSubnetB:   !Ref PrivateSubnetB
+        PrivateSubnetC:   !Ref PrivateSubnetC
 
 Outputs:
   ControllerRole:
