@@ -1,0 +1,38 @@
+[
+  {
+    "ParameterKey": "DomainName",
+    "ParameterValue": "int.example.com"
+  },
+  {
+    "ParameterKey": "ControllerSubdomain",
+    "ParameterValue": "api"
+  },
+  {
+    "ParameterKey": "assetBucket",
+    "ParameterValue": "example-asset-bucket"
+  },
+  {
+    "ParameterKey": "PrivateSubnetCidrPrefix",
+    "ParameterValue": "172.20.16"
+  },
+  {
+    "ParameterKey": "PublicSubnetCidrPrefix",
+    "ParameterValue": "172.20.15"
+  },
+  {
+    "ParameterKey": "VPCID",
+    "ParameterValue": "vpc-1234"
+  },
+  {
+    "ParameterKey": "InternetGateway",
+    "ParameterValue": "igw-1234"
+  },
+  {
+    "ParameterKey": "ParentZoneID",
+    "ParameterValue": "ZABCD"
+  },
+  {
+    "ParameterKey": "ClusterState",
+    "ParameterValue": "existing"
+  }
+]

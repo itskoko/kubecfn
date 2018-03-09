@@ -54,6 +54,7 @@ specific settings.
   'retry': https://github.com/coreos/bugs/issues/2280
 
 ## Create cluster
+- modify `config/example.json`, make sure to set ClusterState=new!
 - `docker build -t cfn-make .`
 - `docker run -e AWS_ACCESS_KEY_ID=xx -e AWS_SECRET_ACCESS_KEY=yy cfn-make \
     create-cluster`
@@ -64,6 +65,8 @@ specific settings.
     update-cluster`
 - Install networking plugin:
 - `kubectl apply -f manifests/kube-flanne.yaml`
+- modify `config/example.json`, make sure to set ClusterState=existing,
+  otherwise replaced etcd instances won't be able to join the cluster.
 
 ## "Dry run"
 Cloudformation supports [Change
@@ -87,11 +90,4 @@ aws --region us-east-1 cloudformation describe-change-set \
 To create a second cluster, you need to override the name of the cloudformation
 stack. This can be done with the NAME environment variable.
 Since the stack uses a existing VPC but brings it's own subnets, the network
-ranges need to be adjusted too:
-
-```
-docker run -e AWS_ACCESS_KEY_ID=.. -e AWS_SECRET_ACCESS_KEY=.. -v $PWD:/usr/src/ \
-  cfn-make create-cluster NAME=int3 \
-    PUBLIC_SUBNET_CIDR_PREFIX=172.20.15 \
-    PRIVATE_SUBNET_CIDR_PREFIX=172.20.16
-```
+ranges need to be adjusted in the config.

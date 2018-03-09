@@ -1,12 +1,6 @@
-NAME                 ?= int
-DOMAIN_ROOT          ?= example.com
-DOMAIN_NAME          := $(NAME).$(DOMAIN_ROOT)
-CONTROLLER_SUBDOMAIN := api
-CONTROLLER_FQDN      := $(CONTROLLER_SUBDOMAIN).$(DOMAIN_NAME)
-CONTROLLER_POOL_SIZE := 3
-
-REGION       ?= us-east-1
-ASSET_BUCKET ?= example-asset-bucket
+NAME   ?= example
+CONFIG ?= config/$(NAME).json
+REGION ?= us-east-1
 
 TOP := $(shell pwd)
 TLS_CA_CSR ?= $(TOP)/cfssl/csr/ca-csr.json
@@ -15,34 +9,15 @@ BUILD         ?= generated/$(NAME)
 BUILD_TLS     := $(BUILD)/tls
 BUILD_KUBEADM := $(BUILD)/kubeadm
 
-PUBLIC_SUBNET_CIDR_PREFIX  ?= 172.20.15
-PRIVATE_SUBNET_CIDR_PREFIX ?= 172.20.16
-
-PARENT_ZONEID ?= ZABCD
-
-VPCID ?= vpc-1234
-IGW   ?= igw-1234
-
-CLUSTER_STATE ?= existing
-
-define kv_pair
-{ "ParameterKey": "$(1)", "ParameterValue": "$(2)" }
+define config
+$(shell jq -r '.[]|select(.ParameterKey == "$(1)").ParameterValue' $(CONFIG))
 endef
 
-define cfn_params
-[
-	$(call kv_pair,DomainName,$(DOMAIN_NAME)),
-	$(call kv_pair,ControllerSubdomain,$(CONTROLLER_SUBDOMAIN)),
-	$(call kv_pair,assetBucket,$(ASSET_BUCKET)),
-	$(call kv_pair,PrivateSubnetCidrPrefix,$(PRIVATE_SUBNET_CIDR_PREFIX)),
-	$(call kv_pair,PublicSubnetCidrPrefix,$(PUBLIC_SUBNET_CIDR_PREFIX)),
-	$(call kv_pair,VPCID,$(VPCID)),
-	$(call kv_pair,InternetGateway,$(IGW)),
-	$(call kv_pair,ParentZoneID,$(PARENT_ZONEID)),
-	$(call kv_pair,ClusterState,$(CLUSTER_STATE))
-]
-endef
-export cfn_params
+DOMAIN_NAME                := $(call config,DomainName)
+CONTROLLER_SUBDOMAIN       := $(call config,ControllerSubdomain)
+CONTROLLER_FQDN            := $(CONTROLLER_SUBDOMAIN).$(DOMAIN_NAME)
+ASSET_BUCKET               := $(call config,assetBucket)
+CLUSTER_STATE              := $(call config,ClusterState)
 
 OBJS := $(BUILD_TLS) $(BUILD_TLS)/ca.pem $(BUILD_TLS)/server-key.pem \
 	$(BUILD_TLS)/peer-key.pem $(BUILD_KUBEADM)/ca.crt \
@@ -60,11 +35,8 @@ ifndef OP
 	$(error OP required)
 endif
 
-params:
-	echo $$cfn_params
-
 create-cluster:
-	OP=create-stack CLUSTER_STATE=new make cloudformation
+	OP=create-stack make cloudformation
 
 update-cluster:
 	OP=update-stack make cloudformation
@@ -73,7 +45,7 @@ cloudformation: require-op upload
 	aws --region $(REGION) cloudformation $(OP) \
 		--stack-name $(NAME) \
 		--capabilities CAPABILITY_IAM \
-		--parameters "$$cfn_params" \
+		--parameters "$$(cat $(CONFIG))" \
 		--template-body "$$(cat kubernetes.yaml)" $(OPTS)
 
 $(BUILD):

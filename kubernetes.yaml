@@ -42,6 +42,10 @@ Parameters:
     Type: String
     Default: v1.9.2_coreos.0
 
+  WorkerFeatureGates:
+    Type: String
+    Default: ""
+
   KubeadmVersion:
     Type: String
     Default: v1.9.2
@@ -1200,11 +1204,12 @@ Resources:
         - assetBucket: !Ref assetBucket
           DomainName:  !Ref DomainName
       Parameters:
-        DomainName:          !Ref DomainName
-        assetBucket:         !Ref assetBucket
-        VPCID:               !Ref VPCID
-        PrivateSubnetA:      !Ref PrivateSubnetA
-        PrivateSubnetB:      !Ref PrivateSubnetB
+        DomainName:     !Ref DomainName
+        FeatureGates:   !Ref WorkerFeatureGates
+        assetBucket:    !Ref assetBucket
+        VPCID:          !Ref VPCID
+        PrivateSubnetA: !Ref PrivateSubnetA
+        PrivateSubnetB: !Ref PrivateSubnetB
         PrivateSubnetC:      !Ref PrivateSubnetC
 
 Outputs:
