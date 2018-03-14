@@ -13,9 +13,9 @@ the cluster is heathly.
 We try to be reasonably secure, meaning all components are secured via TLS
 and RBAC is enabled. Yet, due to the user-data size limits we need to fetch
 the TLS keys from a S3 bucket. The permission for this is granted as an IAM
-instance profile, that means you need to deploy kube2iam or something else
-to block access to the metadata service. This isn't ideal but following the
-current best practices.
+instance profile, that means you need to deploy a metadata proxy to to block
+access to the metadata service. This isn't ideal but following the current best
+practices. We recommend [kiam](https://github.com/uswitch/kiam).
 
 ## Operations
 You can either edit the Makefile or use environment variable to override

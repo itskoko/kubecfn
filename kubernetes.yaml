@@ -754,6 +754,10 @@ Resources:
         Statement:
           - Effect: Allow
             Action:
+              - "sts:AssumeRole"
+            Resource: "*"
+          - Effect: Allow
+            Action:
               - "ec2:Describe*"
               - "elasticloadbalancing:*"
               - "autoscaling:DescribeAutoScalingGroups"
