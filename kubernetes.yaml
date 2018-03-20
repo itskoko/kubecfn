@@ -1127,6 +1127,7 @@ Resources:
                       controllerManagerExtraArgs:
                         flex-volume-plugin-dir: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
                         horizontal-pod-autoscaler-downscale-delay: 30m0s
+                        address: 0.0.0.0
                       controllerManagerExtraVolumes:
                         - name: ca-certs
                           hostPath: /usr/share/ca-certificates
@@ -1134,6 +1135,8 @@ Resources:
                         - name: flexvolume-dir
                           hostPath: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
                           mountPath: /usr/libexec/kubernetes/kubelet-plugins/volume/exec
+                      schedulerExtraArgs:
+                        address: 0.0.0.0
                     - DomainName: !Ref DomainName
                       KubeVersion: !Ref KubeVersion
                       ApiserverCount: !Ref ControllerPoolSize
