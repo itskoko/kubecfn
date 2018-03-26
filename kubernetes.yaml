@@ -34,13 +34,21 @@ Parameters:
     Type: Number
     Default: 3
 
+  ControllerVolumeSize:
+    Type: Number
+    Default: 50
+
+  ControllerVolumeType:
+    Type: String
+    Default: gp2
+
   KubeVersion:
     Type: String
-    Default: 1.9.2
+    Default: 1.9.6
 
   KubeletImageTag:
     Type: String
-    Default: v1.9.2_coreos.0
+    Default: v1.9.6_coreos.0
 
   WorkerFeatureGates:
     Type: String
@@ -52,7 +60,7 @@ Parameters:
 
   KubeadmVersion:
     Type: String
-    Default: v1.9.2
+    Default: v1.9.6
 
   KubeadmURLRoot:
     Type: String
@@ -132,7 +140,6 @@ Mappings:
         EnvironmentFile=/etc/etcd.env
         Environment="RKT_RUN_ARGS=--volume etcd-ssl,kind=host,source=/etc/ssl/etcd \
           --mount volume=etcd-ssl,target=/etc/ssl/etcd"
-        ExecStartPre=/bin/chown -R etcd:etcd /etc/ssl/etcd
         # member-add fails if its run again before etcd comes up, so we ignore
         # the error for now. A failure to add a peer will result in etcd
         # failing and we can monitor that.
@@ -230,8 +237,8 @@ Mappings:
         ExecStartPre=/bin/sh -c 'grep nodeName: /etc/kubernetes/controller.yaml \
           && exit 0; echo "nodeName: $COREOS_EC2_HOSTNAME" \
           >> /etc/kubernetes/controller.yaml'
-        ExecStart=/opt/bin/kubeadm init --config /etc/kubernetes/controller.yaml \
-          --ignore-preflight-errors=KubeletVersion,Port-10250
+        ExecStart=/bin/sh -c 'while ! /opt/bin/kubeadm init --config /etc/kubernetes/controller.yaml \
+          --ignore-preflight-errors=KubeletVersion,Port-10250; do sleep 1; done'
         ExecStartPost=/opt/bin/patch-kube-proxy-cm https://${KUBELET_API_SERVERS}:6443
         ExecStartPost=/etc/etcd-signal-health
         [Install]
@@ -853,9 +860,12 @@ Resources:
       IamInstanceProfile: !GetAtt [ ControllerInstanceProfile, Arn ]
       SecurityGroups:
         - !Ref ControllerSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref ControllerVolumeSize
+            VolumeType: !Ref ControllerVolumeType
       UserData:
-        # FIXME: "user" { "name": "etcd" } somehow isn't working. Working
-        # around by chown in systemd unit.
         Fn::Base64:
           Fn::Sub:
             - |
