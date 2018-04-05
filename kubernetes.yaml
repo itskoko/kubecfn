@@ -1185,7 +1185,7 @@ Resources:
       HealthCheck:
         HealthyThreshold: 2
         Interval: 30
-        Target: TCP:6443
+        Target: SSL:6443
         UnhealthyThreshold: 4
         Timeout: 10
       Listeners:
