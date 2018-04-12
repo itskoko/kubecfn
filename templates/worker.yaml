@@ -12,7 +12,6 @@ Parameters:
 
   KubeletImageTag:
     Type: String
-    Default: v1.9.2_coreos.0
 
   Taints:
     Description: Taints to apply to worker node.

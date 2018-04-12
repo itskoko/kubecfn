@@ -44,11 +44,11 @@ Parameters:
 
   KubeVersion:
     Type: String
-    Default: 1.9.6
+    Default: 1.10.0
 
   KubeletImageTag:
     Type: String
-    Default: v1.9.6_coreos.0
+    Default: v1.10.0_coreos.0
 
   WorkerFeatureGates:
     Type: String
@@ -60,7 +60,7 @@ Parameters:
 
   KubeadmVersion:
     Type: String
-    Default: v1.9.6
+    Default: v1.10.1-beta.0
 
   KubeadmURLRoot:
     Type: String
@@ -134,7 +134,7 @@ Mappings:
         [Unit]
         Requires=coreos-metadata.service
         After=coreos-metadata.service
-        
+
         [Service]
         EnvironmentFile=/run/metadata/coreos
         EnvironmentFile=/etc/etcd.env
@@ -239,47 +239,9 @@ Mappings:
           >> /etc/kubernetes/controller.yaml'
         ExecStart=/bin/sh -c 'while ! /opt/bin/kubeadm init --config /etc/kubernetes/controller.yaml \
           --ignore-preflight-errors=KubeletVersion,Port-10250; do sleep 1; done'
-        ExecStartPost=/opt/bin/patch-kube-proxy-cm https://${KUBELET_API_SERVERS}:6443
         ExecStartPost=/etc/etcd-signal-health
         [Install]
         WantedBy=multi-user.target
-      patchKubeProxyCM: |
-        #!/bin/bash
-        set -euo pipefail
-        API=$1
-        shift
-
-        KUBECONFIG=${KUBECONFIG:-/etc/kubernetes/admin.conf}
-        configMapPath="api/v1/namespaces/kube-system/configmaps/kube-proxy"
-        TMP=$(mktemp -d)
-        trap "rm -r '$TMP'" EXIT
-
-        kc_get() {
-          awk '/'$1'/ { print $2 }' "$KUBECONFIG" \
-            | base64 -d
-        }
-        http() {
-          path=$1
-          shift
-          curl --cacert "$TMP/ca.crt" \
-               --cert "$TMP/client.crt" \
-               --key "$TMP/client.key" "$@" "$API/$path"
-        }
-
-        umask 177
-        kc_get certificate-authority-data > "$TMP/ca.crt"
-        kc_get client-key-data            > "$TMP/client.key"
-        kc_get client-certificate-data    > "$TMP/client.crt"
-
-        conf=$(http $configMapPath \
-          | jq '.data["kubeconfig.conf"]' \
-          | sed 's|server: http[^\\\n]*|server: '$API'|')
-
-        cat <<EOF | http $configMapPath -X PATCH \
-          -H 'Content-Type: application/strategic-merge-patch+json' \
-          -d @-
-        { "data": { "kubeconfig.conf": $conf } }'
-        EOF
 
   # Generate with:
   # curl -L https://coreos.com/dist/aws/aws-stable.json \
@@ -287,53 +249,59 @@ Mappings:
   #   | json2yaml | sed 's/^/    /'
   RegionToImageMap:
     ap-northeast-1:
-      hvm: ami-8f65c4e9
-      pv: ami-7d69c81b
+      hvm: ami-a2b6a2de
+      pv: ami-31b1a54d
     ap-northeast-2:
-      hvm: ami-5901a437
-      pv: ami-6b02a705
+      hvm: ami-cd4de2a3
+      pv: ami-6249e60c
     ap-south-1:
-      hvm: ami-8ad89ae5
-      pv: ami-1fd89a70
+      hvm: ami-0227026d
+      pv: ami-d82104b7
     ap-southeast-1:
-      hvm: ami-64f1b007
-      pv: ami-c4f2b3a7
+      hvm: ami-41461c3d
+      pv: ami-88471df4
     ap-southeast-2:
-      hvm: ami-6e89660c
-      pv: ami-27896645
+      hvm: ami-f58e4097
+      pv: ami-0e8a446c
     ca-central-1:
-      hvm: ami-91853df5
-      pv: ami-fd853d99
+      hvm: ami-7966e01d
+      pv: ami-3f58de5b
     cn-north-1:
-      hvm: ami-d727f4ba
-      pv: ami-d627f4bb
+      hvm: ami-39ee3154
+      pv: ami-62eb340f
+    cn-northwest-1:
+      hvm: ami-e7958185
+      pv: ''
     eu-central-1:
-      hvm: ami-ea53e885
-      pv: ami-7350eb1c
+      hvm: ami-604e118b
+      pv: ami-084e11e3
     eu-west-1:
-      hvm: ami-bbaf0ac2
-      pv: ami-a5ae0bdc
+      hvm: ami-34237c4d
+      pv: ami-405b0439
     eu-west-2:
-      hvm: ami-c3978aa7
-      pv: ami-fa908d9e
+      hvm: ami-b530d1d2
+      pv: ami-dc35d4bb
+    eu-west-3:
+      hvm: ami-a918aed4
+      pv: ''
     sa-east-1:
-      hvm: ami-181c6474
-      pv: ami-051b6369
+      hvm: ami-8d2472e1
+      pv: ami-6b257307
     us-east-1:
-      hvm: ami-a89d3ad2
-      pv: ami-eb9b3c91
+      hvm: ami-9e2685e3
+      pv: ami-12298a6f
     us-east-2:
-      hvm: ami-1c81ad79
-      pv: ami-2280ac47
+      hvm: ami-5d6e5e38
+      pv: ami-256f5f40
     us-gov-west-1:
-      hvm: ami-644dc005
-      pv: ami-674dc006
+      hvm: ami-e0aa3f81
+      pv: ami-8ea83def
     us-west-1:
-      hvm: ami-23566a43
-      pv: ami-cf566aaf
+      hvm: ami-07a6b767
+      pv: ami-9cabbafc
     us-west-2:
-      hvm: ami-7c488704
-      pv: ami-af4d82d7
+      hvm: ami-b41377cc
+      pv: ami-f81c7880
 
 Conditions:
   isExisting: !Equals [ {"Ref": "ClusterState"}, "existing" ]
@@ -975,11 +943,6 @@ Resources:
                     "contents": { "source": "data:;base64,${etcdSignalHealth}" }
                   }, {
                     "filesystem": "root",
-                    "path": "/opt/bin/patch-kube-proxy-cm",
-                    "mode": 493,
-                    "contents": { "source": "data:;base64,${patchKubeProxyCM}" }
-                  }, {
-                    "filesystem": "root",
                     "path": "/opt/bin/kubeadm",
                     "mode": 493,
                     "contents": { "source": "${kubeadmURL}" }
@@ -1079,8 +1042,6 @@ Resources:
                       --region ${Region} || true # Ignore if signaling failed
                   - StackName: !Ref AWS::StackName
                     Region: !Ref AWS::Region
-              patchKubeProxyCM:
-                Fn::Base64: !FindInMap [ Assets, kubeadm, patchKubeProxyCM ]
               # Environment files
               etcdEnv:
                 Fn::Base64:
@@ -1115,7 +1076,7 @@ Resources:
                       apiVersion: kubeadm.k8s.io/v1alpha1
                       kind: MasterConfiguration
                       api:
-                        advertiseAddress: api.${DomainName}:6443
+                        controlPlaneEndpoint: api.${DomainName}
                       etcd:
                         endpoints:
                         - https://localhost:2379
@@ -1234,6 +1195,7 @@ Resources:
         PrivateSubnetA:   !Ref PrivateSubnetA
         PrivateSubnetB:   !Ref PrivateSubnetB
         PrivateSubnetC:   !Ref PrivateSubnetC
+        KubeletImageTag:  !Ref KubeletImageTag
 
 Outputs:
   ControllerRole:
