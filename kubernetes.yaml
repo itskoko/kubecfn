@@ -769,6 +769,7 @@ Resources:
               - "elasticloadbalancing:*"
               - "autoscaling:DescribeAutoScalingGroups"
               - "autoscaling:DescribeLaunchConfigurations"
+              - "autoscaling:DescribeTags"
               - "ec2:CreateRoute"
               - "ec2:CreateSecurityGroup"
               - "ec2:CreateVolume"
