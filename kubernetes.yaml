@@ -767,7 +767,27 @@ Resources:
               - "*"
             Condition:
               StringEquals:
-                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefault
+                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefaultA
+          - Effect: Allow
+            Action:
+              - "ec2:RevokeSecurityGroup*"
+              - "ec2:ModifyInstanceAttribute"
+              - "ec2:AuthorizeSecurityGroup*" # ...for the workers too
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefaultB
+          - Effect: Allow
+            Action:
+              - "ec2:RevokeSecurityGroup*"
+              - "ec2:ModifyInstanceAttribute"
+              - "ec2:AuthorizeSecurityGroup*" # ...for the workers too
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefaultC
           - Effect: Allow
             Action:
               - "ec2:AuthorizeSecurityGroup*"
@@ -1179,7 +1199,7 @@ Resources:
       ResourceRecords:
         - !GetAtt [ "ControllerELB", "DNSName" ]
 
-  WorkerPoolDefault:
+  WorkerPoolDefaultA:
     Type: "AWS::CloudFormation::Stack"
     Properties:
       TemplateURL: !Sub
@@ -1192,9 +1212,39 @@ Resources:
         CPUManagerPolicy: !Ref WorkerCPUManagerPolicy
         assetBucket:      !Ref assetBucket
         VPCID:            !Ref VPCID
-        PrivateSubnetA:   !Ref PrivateSubnetA
-        PrivateSubnetB:   !Ref PrivateSubnetB
-        PrivateSubnetC:   !Ref PrivateSubnetC
+        PrivateSubnet:    !Ref PrivateSubnetA
+        KubeletImageTag:  !Ref KubeletImageTag
+
+  WorkerPoolDefaultB:
+    Type: "AWS::CloudFormation::Stack"
+    Properties:
+      TemplateURL: !Sub
+        - "https://s3.amazonaws.com/${assetBucket}/${DomainName}/templates/worker.yaml"
+        - assetBucket: !Ref assetBucket
+          DomainName:  !Ref DomainName
+      Parameters:
+        DomainName:       !Ref DomainName
+        FeatureGates:     !Ref WorkerFeatureGates
+        CPUManagerPolicy: !Ref WorkerCPUManagerPolicy
+        assetBucket:      !Ref assetBucket
+        VPCID:            !Ref VPCID
+        PrivateSubnet:    !Ref PrivateSubnetB
+        KubeletImageTag:  !Ref KubeletImageTag
+
+  WorkerPoolDefaultC:
+    Type: "AWS::CloudFormation::Stack"
+    Properties:
+      TemplateURL: !Sub
+        - "https://s3.amazonaws.com/${assetBucket}/${DomainName}/templates/worker.yaml"
+        - assetBucket: !Ref assetBucket
+          DomainName:  !Ref DomainName
+      Parameters:
+        DomainName:       !Ref DomainName
+        FeatureGates:     !Ref WorkerFeatureGates
+        CPUManagerPolicy: !Ref WorkerCPUManagerPolicy
+        assetBucket:      !Ref assetBucket
+        VPCID:            !Ref VPCID
+        PrivateSubnet:    !Ref PrivateSubnetC
         KubeletImageTag:  !Ref KubeletImageTag
 
 Outputs:
@@ -1203,9 +1253,22 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-ControllerRole"
   WorkerRole:
-    Value: !GetAtt WorkerPoolDefault.Outputs.WorkerRole
+    Value: !GetAtt WorkerPoolDefaultA.Outputs.WorkerRole
     Export:
       Name: !Sub "${AWS::StackName}-WorkerRole"
+  WorkerRoleA:
+    Value: !GetAtt WorkerPoolDefaultA.Outputs.WorkerRole
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerRoleA"
+  WorkerRoleB:
+    Value: !GetAtt WorkerPoolDefaultB.Outputs.WorkerRole
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerRoleB"
+  WorkerRoleC:
+    Value: !GetAtt WorkerPoolDefaultC.Outputs.WorkerRole
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerRoleC"
+
   WorkerTemplateURL:
     Value: !Sub
       - "https://s3.amazonaws.com/${assetBucket}/${DomainName}/templates/worker.yaml"
