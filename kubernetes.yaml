@@ -1164,6 +1164,8 @@ Resources:
       CrossZone: true
       SecurityGroups:
         - !Ref ControllerSecurityGroup
+      ConnectionSettings:
+        IdleTimeout: 3600
       HealthCheck:
         HealthyThreshold: 2
         Interval: 30
