@@ -55,6 +55,10 @@ Parameters:
   PrivateSubnet:
     Type: String
 
+  DockerOpts:
+    Type: String
+    Default: "--max-concurrent-downloads=15"
+
   assetBucket:
     Type: String
 
@@ -270,6 +274,13 @@ Resources:
                   }, {
                     "name": "locksmithd.service",
                     "mask": true
+                  }, {
+                    "name": "docker.service",
+                    "enable": true,
+                    "dropins": [{
+                      "name": "20-docker-opts.conf",
+                      "contents": "[Service]\nEnvironment=\"DOCKER_OPTS=${DockerOpts}\""
+                    }]
                   }]
                 },
                 "networkd": {},
