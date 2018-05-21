@@ -1153,6 +1153,10 @@ Resources:
           IpProtocol: udp
           FromPort: 0
           ToPort: 65535
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
 
   ControllerELB:
     Type: "AWS::ElasticLoadBalancing::LoadBalancer"
