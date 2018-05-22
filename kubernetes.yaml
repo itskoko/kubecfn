@@ -1051,10 +1051,26 @@ Resources:
                   - |
                     #!/bin/bash
                     set -euo pipefail
-                    echo "Wait for cluster-health"
-                    while ! /etc/etcdctl-wrapper cluster-health; do sleep 1; done
                     echo "Wait for etcd to join cluster"
-                    while ! /etc/etcdctl-wrapper member list | grep $(hostname); do sleep 1; done
+                    while ! /etc/etcdctl-wrapper member list | grep "$(hostname)"; do sleep 1; done
+                    echo "Wait for cluster-health"
+                    while true; do
+                      sleep 1
+                      /etc/etcdctl-wrapper cluster-health | tee /tmp/cluster-health.txt
+                      if [[ "${!PIPESTATUS[0]}" -ne 0 ]]; then
+                        echo " - no quorum, retrying"
+                        continue
+                      fi
+                      if [[ "$(cat /tmp/cluster-health.txt | wc -l)" -ne "$((${ControllerPoolSize}+1))" ]]; then
+                        echo "- unexpected number of peers"
+                        continue
+                      fi
+                      # continue if all lines contain 'is healthy'
+                      if ! grep -v "is healthy" /tmp/cluster-health.txt; then
+                        break
+                      fi
+                      echo " - unhealthy members found, retrying"
+                    done
                     echo "Signaling success"
                     docker run --rm --net=host rochacon/cfn-bootstrap cfn-signal \
                       --resource ControllerAutoScalingGroup \
@@ -1062,6 +1078,7 @@ Resources:
                       --region ${Region} || true # Ignore if signaling failed
                   - StackName: !Ref AWS::StackName
                     Region: !Ref AWS::Region
+                    ControllerPoolSize: !Ref ControllerPoolSize
               # Environment files
               etcdEnv:
                 Fn::Base64:
