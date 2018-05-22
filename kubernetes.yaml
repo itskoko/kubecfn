@@ -44,11 +44,15 @@ Parameters:
 
   KubeVersion:
     Type: String
-    Default: 1.10.0
+    Default: 1.10.3
 
   KubeletImageTag:
     Type: String
-    Default: v1.10.0_coreos.0
+    Default: v1.10.3_coreos.0
+
+  KubeadmFeatureGates:
+    Type: CommaDelimitedList
+    Default: ""
 
   WorkerFeatureGates:
     Type: String
@@ -60,7 +64,7 @@ Parameters:
 
   KubeadmVersion:
     Type: String
-    Default: v1.10.1-beta.0
+    Default: v1.10.3
 
   KubeadmURLRoot:
     Type: String
@@ -1146,9 +1150,12 @@ Resources:
                           mountPath: /usr/libexec/kubernetes/kubelet-plugins/volume/exec
                       schedulerExtraArgs:
                         address: 0.0.0.0
+                      featureGates:
+                        ${FeatureGates}
                     - DomainName: !Ref DomainName
                       KubeVersion: !Ref KubeVersion
                       ApiserverCount: !Ref ControllerPoolSize
+                      FeatureGates: !Join [ "\n  ", !Ref KubeadmFeatureGates ]
 
               domain: !Ref DomainName
               kubeadmURL: !Join
