@@ -1126,6 +1126,11 @@ Resources:
                         keyFile: /etc/ssl/etcd/peer.key
                       kubernetesVersion: ${KubeVersion}
                       cloudProvider: aws
+                      kubeProxy:
+                        config:
+                          featureGates: SupportIPVSProxyMode=true
+                          mode: ipvs
+                          metricsBindAddress: 0.0.0.0:10249
                       networking:
                         dnsDomain: ${DomainName}
                         podSubnet: 10.244.0.0/16
