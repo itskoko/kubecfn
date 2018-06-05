@@ -1128,7 +1128,8 @@ Resources:
                       cloudProvider: aws
                       kubeProxy:
                         config:
-                          featureGates: SupportIPVSProxyMode=true
+                          featureGates:
+                            SupportIPVSProxyMode: true
                           mode: ipvs
                           metricsBindAddress: 0.0.0.0:10249
                       networking:
