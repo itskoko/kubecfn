@@ -73,6 +73,7 @@ Mappings:
         After=coreos-metadata.service
 
         [Service]
+        EnvironmentFile=/run/metadata/coreos
         EnvironmentFile=/etc/kubernetes.env
         Environment="RKT_RUN_ARGS=--uuid-file-save=/var/run/kubelet-pod.uuid \
           --volume dns,kind=host,source=/etc/resolv.conf \
@@ -91,6 +92,7 @@ Mappings:
           --network-plugin=cni \
           --pod-cidr=10.244.0.0/16 \
           --cluster-dns=10.96.0.10 \
+          --node-ip=${COREOS_EC2_IPV4_LOCAL} \
           --cluster-domain=${KUBELET_CLUSTER_DOMAIN} \
           --register-with-taints=${KUBELET_TAINTS} \
           --feature-gates=${KUBELET_FEATURE_GATES} \
@@ -188,6 +190,26 @@ Resources:
           - Effect: Allow
             Action:
               - "ec2:Describe*"
+
+              # Allow pulling from ECR (still requires permissive repo policy)
+              - "ecr:GetAuthorizationToken"
+              - "ecr:GetAuthorizationToken"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:GetRepositoryPolicy"
+              - "ecr:DescribeRepositories"
+              - "ecr:ListImages"
+              - "ecr:BatchGetImage"
+
+              # For amazon-vpc-cni-k8s
+              - "ec2:CreateNetworkInterface"
+              - "ec2:AttachNetworkInterface"
+              - "ec2:DeleteNetworkInterface"
+              - "ec2:DetachNetworkInterface"
+              - "ec2:ModifyNetworkInterfaceAttribute"
+              - "ec2:AssignPrivateIpAddresses"
+              - "tag:TagResources"
+
             Resource:
               - "*"
           - Effect: Allow
