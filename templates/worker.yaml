@@ -110,53 +110,57 @@ Mappings:
   #   | json2yaml | sed 's/^/    /'
   RegionToImageMap:
     ap-northeast-1:
-      hvm: ami-8f65c4e9
-      pv: ami-7d69c81b
+      hvm: ami-55e41e2a
+      pv: ami-69e51f16
     ap-northeast-2:
-      hvm: ami-5901a437
-      pv: ami-6b02a705
+      hvm: ami-c09338ae
+      pv: ami-aa903bc4
     ap-south-1:
-      hvm: ami-8ad89ae5
-      pv: ami-1fd89a70
+      hvm: ami-84406eeb
+      pv: ami-ae5e70c1
     ap-southeast-1:
-      hvm: ami-64f1b007
-      pv: ami-c4f2b3a7
+      hvm: ami-86bf81fa
+      pv: ami-19c1ff65
     ap-southeast-2:
-      hvm: ami-6e89660c
-      pv: ami-27896645
+      hvm: ami-f6e53794
+      pv: ami-b7e537d5
     ca-central-1:
-      hvm: ami-91853df5
-      pv: ami-fd853d99
+      hvm: ami-6df57609
+      pv: ami-06fa7962
     cn-north-1:
-      hvm: ami-d727f4ba
-      pv: ami-d627f4bb
+      hvm: ami-555a8438
+      pv: ami-fc5c8291
+    cn-northwest-1:
+      hvm: ami-06a0b464
     eu-central-1:
-      hvm: ami-ea53e885
-      pv: ami-7350eb1c
+      hvm: ami-4a83b6a1
+      pv: ami-8680b56d
     eu-west-1:
-      hvm: ami-bbaf0ac2
-      pv: ami-a5ae0bdc
+      hvm: ami-c70005be
+      pv: ami-2572775c
     eu-west-2:
-      hvm: ami-c3978aa7
-      pv: ami-fa908d9e
+      hvm: ami-177a9670
+      pv: ami-db7a96bc
+    eu-west-3:
+      hvm: ami-d240f1af
     sa-east-1:
-      hvm: ami-181c6474
-      pv: ami-051b6369
+      hvm: ami-a82079c4
+      pv: ami-9e267ff2
     us-east-1:
-      hvm: ami-a89d3ad2
-      pv: ami-eb9b3c91
+      hvm: ami-a32d46dc
+      pv: ami-6b3e5514
     us-east-2:
-      hvm: ami-1c81ad79
-      pv: ami-2280ac47
+      hvm: ami-36497653
+      pv: ami-e4487781
     us-gov-west-1:
-      hvm: ami-644dc005
-      pv: ami-674dc006
+      hvm: ami-8ccc5ded
+      pv: ami-54cf5e35
     us-west-1:
-      hvm: ami-23566a43
-      pv: ami-cf566aaf
+      hvm: ami-6e647e0e
+      pv: ami-161a0076
     us-west-2:
-      hvm: ami-7c488704
-      pv: ami-af4d82d7
+      hvm: ami-4296ec3a
+      pv: ami-0e90ea76
 
 Resources:
   # FIXME: Lock down to only worker coms

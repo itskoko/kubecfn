@@ -255,59 +255,57 @@ Mappings:
   #   | json2yaml | sed 's/^/    /'
   RegionToImageMap:
     ap-northeast-1:
-      hvm: ami-a2b6a2de
-      pv: ami-31b1a54d
+      hvm: ami-55e41e2a
+      pv: ami-69e51f16
     ap-northeast-2:
-      hvm: ami-cd4de2a3
-      pv: ami-6249e60c
+      hvm: ami-c09338ae
+      pv: ami-aa903bc4
     ap-south-1:
-      hvm: ami-0227026d
-      pv: ami-d82104b7
+      hvm: ami-84406eeb
+      pv: ami-ae5e70c1
     ap-southeast-1:
-      hvm: ami-41461c3d
-      pv: ami-88471df4
+      hvm: ami-86bf81fa
+      pv: ami-19c1ff65
     ap-southeast-2:
-      hvm: ami-f58e4097
-      pv: ami-0e8a446c
+      hvm: ami-f6e53794
+      pv: ami-b7e537d5
     ca-central-1:
-      hvm: ami-7966e01d
-      pv: ami-3f58de5b
+      hvm: ami-6df57609
+      pv: ami-06fa7962
     cn-north-1:
-      hvm: ami-39ee3154
-      pv: ami-62eb340f
+      hvm: ami-555a8438
+      pv: ami-fc5c8291
     cn-northwest-1:
-      hvm: ami-e7958185
-      pv: ''
+      hvm: ami-06a0b464
     eu-central-1:
-      hvm: ami-604e118b
-      pv: ami-084e11e3
+      hvm: ami-4a83b6a1
+      pv: ami-8680b56d
     eu-west-1:
-      hvm: ami-34237c4d
-      pv: ami-405b0439
+      hvm: ami-c70005be
+      pv: ami-2572775c
     eu-west-2:
-      hvm: ami-b530d1d2
-      pv: ami-dc35d4bb
+      hvm: ami-177a9670
+      pv: ami-db7a96bc
     eu-west-3:
-      hvm: ami-a918aed4
-      pv: ''
+      hvm: ami-d240f1af
     sa-east-1:
-      hvm: ami-8d2472e1
-      pv: ami-6b257307
+      hvm: ami-a82079c4
+      pv: ami-9e267ff2
     us-east-1:
-      hvm: ami-9e2685e3
-      pv: ami-12298a6f
+      hvm: ami-a32d46dc
+      pv: ami-6b3e5514
     us-east-2:
-      hvm: ami-5d6e5e38
-      pv: ami-256f5f40
+      hvm: ami-36497653
+      pv: ami-e4487781
     us-gov-west-1:
-      hvm: ami-e0aa3f81
-      pv: ami-8ea83def
+      hvm: ami-8ccc5ded
+      pv: ami-54cf5e35
     us-west-1:
-      hvm: ami-07a6b767
-      pv: ami-9cabbafc
+      hvm: ami-6e647e0e
+      pv: ami-161a0076
     us-west-2:
-      hvm: ami-b41377cc
-      pv: ami-f81c7880
+      hvm: ami-4296ec3a
+      pv: ami-0e90ea76
 
 Conditions:
   isExisting: !Equals [ {"Ref": "ClusterState"}, "existing" ]
