@@ -99,20 +99,19 @@ Parameters:
     Type: String
     Default: 4.0/23
 
-  PrivateSubnetCidrPrefix:
+  PrivateSubnetCidr:
+    Description: Range for all subnets in CIDR notation
     Type: String
 
-  PrivateSubnetCidrASuffix:
-    Type: String
-    Default: 0.0/23
+  PrivateSubnetCount:
+    Description: Number of subnets available in SubnetCidr
+    Type: Number
+    Default: 8
 
-  PrivateSubnetCidrBSuffix:
-    Type: String
-    Default: 2.0/23
-
-  PrivateSubnetCidrCSuffix:
-    Type: String
-    Default: 4.0/23
+  PrivateSubnetBits:
+    Description: Subnet mask for private subnets in Fn::Cidr notation
+    Type: Number
+    Default: 11
 
   SubnetAZA:
     Type: String
@@ -316,7 +315,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPCID
-      CidrBlock: !Join [ "", [ !Ref PrivateSubnetCidrPrefix, !Ref PublicSubnetCidrASuffix ] ]
+      CidrBlock: !Select [ 0, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
       AvailabilityZone: !Ref SubnetAZA
       Tags:
       - Key: KubernetesCluster
@@ -330,7 +329,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPCID
-      CidrBlock: !Join [ "", [ !Ref PrivateSubnetCidrPrefix, !Ref PublicSubnetCidrBSuffix ] ]
+      CidrBlock: !Select [ 1, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
       AvailabilityZone: !Ref SubnetAZB
       Tags:
       - Key: KubernetesCluster
@@ -344,7 +343,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPCID
-      CidrBlock: !Join [ "", [ !Ref PrivateSubnetCidrPrefix, !Ref PublicSubnetCidrCSuffix ] ]
+      CidrBlock: !Select [ 2, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
       AvailabilityZone: !Ref SubnetAZC
       Tags:
       - Key: KubernetesCluster
