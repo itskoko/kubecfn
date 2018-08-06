@@ -1,6 +1,6 @@
 NAME   ?= example
 CONFIG ?= config/$(NAME).json
-REGION=us-east-1
+REGION ?= us-east-1
 
 ifdef $$REGION
 REGION=$$REGION
