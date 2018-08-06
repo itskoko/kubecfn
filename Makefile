@@ -1,6 +1,6 @@
-NAME   ?= example
+NAME   ?= $(or ${NAME},example)
 CONFIG ?= config/$(NAME).json
-REGION ?= us-east-1
+REGION ?= $(or ${REGION},us-east-1)
 
 TOP := $(shell pwd)
 TLS_CA_CSR ?= $(TOP)/cfssl/csr/ca-csr.json
