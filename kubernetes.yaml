@@ -1162,7 +1162,6 @@ Resources:
                         - api.${DomainName}
                       controllerManagerExtraArgs:
                         flex-volume-plugin-dir: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
-                        horizontal-pod-autoscaler-downscale-delay: 30m0s
                         address: 0.0.0.0
                       controllerManagerExtraVolumes:
                         - name: ca-certs
