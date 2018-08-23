@@ -10,7 +10,7 @@ Parameters:
   DomainName:
     Type: String
 
-  KubeletImageTag:
+  KubeVersion:
     Type: String
 
   Taints:
@@ -335,13 +335,15 @@ Resources:
                 Fn::Base64:
                   Fn::Sub:
                     - |
-                      KUBELET_IMAGE_TAG=${KubeletImageTag}
+                      KUBELET_IMAGE_URL=docker://gcr.io/google-containers/hyperkube-amd64
+                      KUBELET_IMAGE_TAG=${KubeVersion}
                       KUBELET_API_SERVERS=api.${DomainName}
                       KUBELET_CLUSTER_DOMAIN=${DomainName}
                       KUBELET_TAINTS=${Taints}
                       KUBELET_FEATURE_GATES=${FeatureGates}
                       KUBELET_CPU_MANAGER_POLICY=${CPUManagerPolicy}
-                    - KubeletImageTag: !Ref KubeletImageTag
+                      RKT_GLOBAL_ARGS="--insecure-options=image"
+                    - KubeVersion: !Ref KubeVersion
                       DomainName: !Ref DomainName
                       Taints: !Ref Taints
                       FeatureGates: !Ref FeatureGates

@@ -44,11 +44,7 @@ Parameters:
 
   KubeVersion:
     Type: String
-    Default: 1.10.3
-
-  KubeletImageTag:
-    Type: String
-    Default: v1.10.3_coreos.0
+    Default: v1.11.2
 
   KubeadmFeatureGates:
     Type: CommaDelimitedList
@@ -64,7 +60,7 @@ Parameters:
 
   KubeadmVersion:
     Type: String
-    Default: v1.10.3
+    Default: v1.11.2
 
   KubeadmURLRoot:
     Type: String
@@ -75,6 +71,11 @@ Parameters:
     Type: String
     Description: No leading /
     Default: bin/linux/amd64/kubeadm
+
+  CriCtlVersion:
+    Type: String
+    Description: crictl version
+    Default: v1.11.1
 
   VPCID:
     Description: Existing VPC with attached internet gateway to use for this cluster.
@@ -239,9 +240,13 @@ Mappings:
         Type=oneshot
         EnvironmentFile=/run/metadata/coreos
         EnvironmentFile=/etc/kubernetes.env
+        Environment="PATH=/bin:/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/opt/bin"
         ExecStartPre=/bin/sh -c 'grep nodeName: /etc/kubernetes/controller.yaml \
           && exit 0; echo "nodeName: $COREOS_EC2_HOSTNAME" \
           >> /etc/kubernetes/controller.yaml'
+        ExecStartPre=/bin/sh -c 'test -f /opt/bin/crictl && exit 0; \
+          curl -sfL "https://github.com/kubernetes-incubator/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-amd64.tar.gz" \
+            | tar -C /opt/bin/ -xzvf -'
         ExecStart=/bin/sh -c 'while ! /opt/bin/kubeadm init --config /etc/kubernetes/controller.yaml \
           --ignore-preflight-errors=KubeletVersion,Port-10250; do sleep 1; done'
         ExecStartPost=/etc/etcd-signal-health
@@ -1114,11 +1119,15 @@ Resources:
                 Fn::Base64:
                   Fn::Sub:
                     - |
-                      KUBELET_IMAGE_TAG=${KubeletImageTag}
+                      KUBELET_IMAGE_TAG=${KubeVersion}
+                      KUBELET_IMAGE_URL=docker://gcr.io/google-containers/hyperkube-amd64
                       KUBELET_API_SERVERS=api.${DomainName}
                       KUBELET_CLUSTER_DOMAIN=${DomainName}
-                    - KubeletImageTag: !Ref KubeletImageTag
+                      RKT_GLOBAL_ARGS="--insecure-options=image"
+                      CRICTL_VERSION=${CriCtlVersion}
+                    - KubeVersion: !Ref KubeVersion
                       DomainName: !Ref DomainName
+                      CriCtlVersion: !Ref CriCtlVersion
               cloudProviderConfig:
                 Fn::Base64:
                   Fn::Sub:
@@ -1265,7 +1274,7 @@ Resources:
         assetBucket:      !Ref assetBucket
         VPCID:            !Ref VPCID
         PrivateSubnet:    !Ref PrivateSubnetA
-        KubeletImageTag:  !Ref KubeletImageTag
+        KubeVersion:      !Ref KubeVersion
 
   WorkerPoolDefaultB:
     Type: "AWS::CloudFormation::Stack"
@@ -1281,7 +1290,7 @@ Resources:
         assetBucket:      !Ref assetBucket
         VPCID:            !Ref VPCID
         PrivateSubnet:    !Ref PrivateSubnetB
-        KubeletImageTag:  !Ref KubeletImageTag
+        KubeVersion:      !Ref KubeVersion
 
   WorkerPoolDefaultC:
     Type: "AWS::CloudFormation::Stack"
@@ -1297,7 +1306,7 @@ Resources:
         assetBucket:      !Ref assetBucket
         VPCID:            !Ref VPCID
         PrivateSubnet:    !Ref PrivateSubnetC
-        KubeletImageTag:  !Ref KubeletImageTag
+        KubeVersion:      !Ref KubeVersion
 
 Outputs:
   ControllerRole:
