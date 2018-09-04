@@ -1212,6 +1212,11 @@ Resources:
           IpProtocol: icmp
           FromPort: -1
           ToPort: -1
+      Tags:
+        - Key: KubernetesCluster
+          Value: !Ref DomainName
+        - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+          Value: owned
 
   ControllerELB:
     Type: "AWS::ElasticLoadBalancing::LoadBalancer"
