@@ -1386,6 +1386,18 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PublicSubnetC"
     Value: !Ref PublicSubnetC
+  PrivateSubnetRouteTableA:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetRouteTableA"
+    Value: !Ref PrivateSubnetRouteTableA
+  PrivateSubnetRouteTableB:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetRouteTableB"
+    Value: !Ref PrivateSubnetRouteTableB
+  PrivateSubnetRouteTableC:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetRouteTableC"
+    Value: !Ref PrivateSubnetRouteTableC
   HostedZone:
     Export:
       Name: !Sub "${AWS::StackName}-HostedZone"
