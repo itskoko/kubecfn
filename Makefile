@@ -2,6 +2,14 @@ NAME   ?= example
 CONFIG ?= config/$(NAME).json
 REGION ?= us-east-1
 
+ifdef $$REGION
+REGION=$$REGION
+endif
+
+ifdef $$NAME
+NAME=$$NAME
+endif
+
 TOP := $(shell pwd)
 TLS_CA_CSR ?= $(TOP)/cfssl/csr/ca-csr.json
 
