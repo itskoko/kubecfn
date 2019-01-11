@@ -313,6 +313,8 @@ Mappings:
 
 Conditions:
   isExisting: !Equals [ {"Ref": "ClusterState"}, "existing" ]
+  hasNoParentZone: !Equals [ {"Ref": "ParentZoneID"}, "" ]
+  hasParentZone: !Not [ { "Condition": "hasNoParentZone" } ]
 
 Resources:
   ### Private Subnets ###
@@ -1249,6 +1251,7 @@ Resources:
       Type: NS
       TTL: 60
       ResourceRecords: !GetAtt [ HostedZone, NameServers ]
+    Condition: hasParentZone
 
   HostedZone:
     Type: "AWS::Route53::HostedZone"
@@ -1354,6 +1357,7 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-ParentZoneID"
     Value: !Ref ParentZoneID
+    Condition: hasParentZone
   ControllerSubdomain:
     Export:
       Name: !Sub "${AWS::StackName}-ControllerSubdomain"
