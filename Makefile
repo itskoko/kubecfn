@@ -80,10 +80,11 @@ $(BUILD_KUBEADM)/sa.pub:
 
 $(BUILD_KUBEADM)/admin.conf: $(BUILD_KUBEADM)/ca.crt
 	kubeadm alpha phase kubeconfig admin \
-		--apiserver-advertise-address $(CONTROLLER_FQDN) \
+		--apiserver-advertise-address 1.2.3.4 \
 		--cert-dir $(TOP)/$(dir $@)
-	# FIXME: Somehow --apiserver-advertise-address isn't working so we need to
-	# patch file manually.
+	# FIXME: --apiserver-advertise-address requires to use an IP now. We should
+	# generate a config with apiServer.cert-sans and controlEndpoint and use this
+	# instead. For now, keep patching file manually.
 	sed 's|\(server: https://\)[^:]*\(.*\)|\1$(CONTROLLER_FQDN)\2|' \
 		/etc/kubernetes/admin.conf \
 		| install -m600 /dev/stdin $(dir $@)/admin.conf
