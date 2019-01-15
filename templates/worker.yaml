@@ -31,7 +31,6 @@ Parameters:
   WorkerInstanceType:
     Description: EC2 instance type for controller nodes.
     Type: String
-    Default: c5.4xlarge
 
   WorkerPoolSizeMin:
     Description: Number of Worker Nodes
@@ -58,6 +57,12 @@ Parameters:
   DockerOpts:
     Type: String
     Default: "--max-concurrent-downloads=15"
+
+  InstanceRoleName:
+    Type: String
+
+  SecurityGroup:
+    Type: String
 
   assetBucket:
     Type: String
@@ -163,93 +168,12 @@ Mappings:
       pv: ami-0e90ea76
 
 Resources:
-  # FIXME: Lock down to only worker coms
-  WorkerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPCID
-      GroupDescription: Kubernetes Worker SecurityGroup
-      SecurityGroupIngress:
-        - CidrIp: "0.0.0.0/0"
-          IpProtocol: tcp
-          FromPort: 0
-          ToPort: 65535
-        - CidrIp: "0.0.0.0/0"
-          IpProtocol: udp
-          FromPort: 0
-          ToPort: 65535
-        - CidrIp: "0.0.0.0/0"
-          IpProtocol: icmp
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: KubernetesCluster
-          Value: !Ref DomainName
-        - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-          Value: owned
-
-  PolicyWorker:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      Description: "k8s-worker"
-      Path: /
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Action:
-              - "ec2:Describe*"
-
-              # Allow pulling from ECR (still requires permissive repo policy)
-              - "ecr:GetAuthorizationToken"
-              - "ecr:GetAuthorizationToken"
-              - "ecr:BatchCheckLayerAvailability"
-              - "ecr:GetDownloadUrlForLayer"
-              - "ecr:GetRepositoryPolicy"
-              - "ecr:DescribeRepositories"
-              - "ecr:ListImages"
-              - "ecr:BatchGetImage"
-
-              # For amazon-vpc-cni-k8s
-              - "ec2:CreateNetworkInterface"
-              - "ec2:AttachNetworkInterface"
-              - "ec2:DeleteNetworkInterface"
-              - "ec2:DetachNetworkInterface"
-              - "ec2:ModifyNetworkInterfaceAttribute"
-              - "ec2:AssignPrivateIpAddresses"
-              - "tag:TagResources"
-
-            Resource:
-              - "*"
-          - Effect: Allow
-            Action:
-              - "s3:Get*"
-              - "s3:List*"
-              - "s3:Head*"
-            Resource:
-              - !Sub
-                - "arn:aws:s3:::${assetBucket}/${domain}/kubeadm/admin.conf"
-                - assetBucket: !Ref assetBucket
-                  domain: !Ref DomainName
-  WorkerRole:
-    Type: AWS::IAM::Role
-    Properties:
-      ManagedPolicyArns:
-        - !Ref PolicyWorker
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: "sts:AssumeRole"
-
-  WorkerInstanceProfile:
+  InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: /
       Roles:
-        - !Ref WorkerRole
+        - !Ref InstanceRoleName
 
   WorkerLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -262,9 +186,9 @@ Resources:
           Ebs:
             VolumeSize:
               Ref: WorkerVolumeSize
-      IamInstanceProfile: !GetAtt [ WorkerInstanceProfile, Arn ]
+      IamInstanceProfile: !GetAtt [ InstanceProfile, Arn ]
       SecurityGroups:
-        - !Ref WorkerSecurityGroup
+        - !Ref SecurityGroup
       UserData:
         Fn::Base64:
           Fn::Sub:
@@ -398,6 +322,3 @@ Resources:
         #        MinInstancesInService: 1
         #        PauseTime: PT15M
         #        WaitOnResourceSignals: true
-Outputs:
-  WorkerRole:
-    Value: !Ref WorkerRole

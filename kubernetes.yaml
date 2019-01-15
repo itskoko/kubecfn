@@ -1,6 +1,9 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Parameters:
+  DomainName:
+    Type: String
+
   ClusterState:
     Type: String
     Description: |
@@ -19,7 +22,14 @@ Parameters:
     Type: String
 
   ParentZoneID:
-    Type: String
+    Type: AWS::Route53::HostedZone::Id
+
+  ControllerSecurityGroup:
+    Description: Subdomain for controller ELB, relative to DomainName
+    Type: AWS::EC2::SecurityGroup::Id
+
+  ControllerELBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
 
   ControllerSubdomain:
     Description: Subdomain for controller ELB, relative to DomainName
@@ -28,7 +38,12 @@ Parameters:
   ControllerInstanceType:
     Description: EC2 instance type for controller nodes.
     Type: String
-    Default: m3.medium
+    Default: m4.medium
+
+  WorkerInstanceType:
+    Description: EC2 instance type for controller nodes.
+    Type: String
+    Default: c5.xlarge
 
   ControllerPoolSize:
     Type: Number
@@ -49,6 +64,12 @@ Parameters:
   KubeadmFeatureGates:
     Type: CommaDelimitedList
     Default: ""
+
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  WorkerRoleName:
+    Type: String
 
   WorkerFeatureGates:
     Type: String
@@ -81,50 +102,40 @@ Parameters:
     Description: Existing VPC with attached internet gateway to use for this cluster.
     Type: AWS::EC2::VPC::Id
 
+  VPCID:
+    Description: Existing VPC with attached internet gateway to use for this cluster.
+    Type: AWS::EC2::VPC::Id
+
   InternetGateway:
     Description: The InternetGateway attached to the VPC
     Type: String
 
-  PublicSubnetCidrPrefix:
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet::Id
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet::Id
+
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet::Id
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet::Id
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet::Id
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet::Id
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  ControllerRoleName:
     Type: String
 
-  PublicSubnetCidrASuffix:
+  AutoScalingDNSUpdateLambdaRoleARN:
     Type: String
-    Default: 0.0/23
-
-  PublicSubnetCidrBSuffix:
-    Type: String
-    Default: 2.0/23
-
-  PublicSubnetCidrCSuffix:
-    Type: String
-    Default: 4.0/23
-
-  PrivateSubnetCidr:
-    Description: Range for all subnets in CIDR notation
-    Type: String
-
-  PrivateSubnetCount:
-    Description: Number of subnets available in SubnetCidr
-    Type: Number
-    Default: 8
-
-  PrivateSubnetBits:
-    Description: Subnet mask for private subnets in Fn::Cidr notation
-    Type: Number
-    Default: 11
-
-  SubnetAZA:
-    Type: String
-    Default: us-east-1b
-
-  SubnetAZB:
-    Type: String
-    Default: us-east-1c
-
-  SubnetAZC:
-    Type: String
-    Default: us-east-1d
 
   assetBucket:
     Type: String
@@ -317,243 +328,6 @@ Conditions:
   hasParentZone: !Not [ { "Condition": "hasNoParentZone" } ]
 
 Resources:
-  ### Private Subnets ###
-  PrivateSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPCID
-      CidrBlock: !Select [ 0, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
-      AvailabilityZone: !Ref SubnetAZA
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: kubernetes.io/role/internal-elb
-        Value: 1
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-
-  PrivateSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPCID
-      CidrBlock: !Select [ 1, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
-      AvailabilityZone: !Ref SubnetAZB
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: kubernetes.io/role/internal-elb
-        Value: 1
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-
-  PrivateSubnetC:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPCID
-      CidrBlock: !Select [ 2, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
-      AvailabilityZone: !Ref SubnetAZC
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: kubernetes.io/role/internal-elb
-        Value: 1
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-
-  PrivateSubnetRouteTableA:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPCID
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-
-  PrivateSubnetRouteTableB:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPCID
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-
-  PrivateSubnetRouteTableC:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPCID
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-
-  PrivateSubnetRouteA:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateSubnetRouteTableA
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGatewayA
-
-  PrivateSubnetRouteB:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateSubnetRouteTableB
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGatewayB
-
-  PrivateSubnetRouteC:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateSubnetRouteTableC
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGatewayC
-
-  PrivateSubnetRouteTableAssociationA:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PrivateSubnetA
-      RouteTableId: !Ref PrivateSubnetRouteTableA
-
-  PrivateSubnetRouteTableAssociationB:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PrivateSubnetB
-      RouteTableId: !Ref PrivateSubnetRouteTableB
-
-  PrivateSubnetRouteTableAssociationC:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PrivateSubnetC
-      RouteTableId: !Ref PrivateSubnetRouteTableC
-
-  NATEIPA:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-
-  NATEIPB:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-
-  NATEIPC:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-
-  NATGatewayA:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NATEIPA.AllocationId
-      SubnetId: !Ref PublicSubnetA
-
-  NATGatewayB:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NATEIPB.AllocationId
-      SubnetId: !Ref PublicSubnetB
-
-  NATGatewayC:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NATEIPC.AllocationId
-      SubnetId: !Ref PublicSubnetA
-
-  ### Public Subnets ###
-  PublicSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPCID
-      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrASuffix ] ]
-      AvailabilityZone: !Ref SubnetAZA
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: kubernetes.io/role/internal-elb
-        Value: 1
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-      MapPublicIpOnLaunch: true
-
-  PublicSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPCID
-      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrBSuffix ] ]
-      AvailabilityZone: !Ref SubnetAZB
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: kubernetes.io/role/internal-elb
-        Value: 1
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-      MapPublicIpOnLaunch: true
-
-  PublicSubnetC:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPCID
-      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrCSuffix ] ]
-      AvailabilityZone: !Ref SubnetAZC
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: kubernetes.io/role/internal-elb
-        Value: 1
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-      MapPublicIpOnLaunch: true
-
-  PublicSubnetRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPCID
-      Tags:
-      - Key: KubernetesCluster
-        Value: !Ref DomainName
-      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-        Value: owned
-
-  PublicSubnetRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PublicSubnetRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  PublicSubnetRouteTableAssociationA:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnetA
-      RouteTableId: !Ref PublicSubnetRouteTable
-
-  PublicSubnetRouteTableAssociationB:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnetB
-      RouteTableId: !Ref PublicSubnetRouteTable
-
-  PublicSubnetRouteTableAssociationC:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnetC
-      RouteTableId: !Ref PublicSubnetRouteTable
-
-  BastionSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Enable SSH access via port 22
-      VpcId: !Ref VPCID
-      SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: '22'
-        ToPort: '22'
-        CidrIp: '0.0.0.0/0'
-
   BastionHost:
     Type: AWS::EC2::Instance
     Properties:
@@ -613,10 +387,11 @@ Resources:
         MinInstancesInService: 2
         WaitOnResourceSignals: true
         PauseTime: PT1H
+
   AutoScalingDNSUpdateLambda:
     Type: "AWS::Lambda::Function"
     Properties:
-      Role: !GetAtt [ AutoScalingDNSUpdateLambdaRole, Arn ]
+      Role: !Ref AutoScalingDNSUpdateLambdaRoleARN
       Runtime: python3.6
       Handler: index.lambda_handler
       Code:
@@ -687,186 +462,12 @@ Resources:
       SourceArn: !Ref AutoScalingNotificationTopic
       FunctionName: !GetAtt [ AutoScalingDNSUpdateLambda, Arn ]
 
-  AutoScalingDNSUpdateLambdaRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: "sts:AssumeRole"
-      Policies:
-        - PolicyName: "root"
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "ec2:DescribeNetworkInterfaces"
-                  - "ec2:CreateNetworkInterface"
-                  - "ec2:DeleteNetworkInterface"
-                  - "ec2:DescribeInstances"
-                  - "autoscaling:DescribeAutoScalingGroups"
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - "logs:CreateLogGroup"
-                  - "logs:CreateLogStream"
-                  - "logs:PutLogEvents"
-                Resource: "arn:aws:logs:*:*:*"
-              - Effect: Allow
-                Action:
-                  - "route53:GetChange"
-                Resource:
-                  - "*"
-              - Effect: Allow
-                Action:
-                  - "route53:ChangeResourceRecordSets"
-                  - "route53:ListResourceRecordSets"
-                Resource: !Sub
-                  - "arn:aws:route53:::hostedzone/${HostedZone}"
-                  - { HostedZone: !Ref HostedZone }
-
-  PolicyController:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      Description: "k8s-controller"
-      Path: /
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Action:
-              - "sts:AssumeRole"
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - "ec2:Describe*"
-              - "elasticloadbalancing:*"
-              - "autoscaling:DescribeAutoScalingGroups"
-              - "autoscaling:DescribeLaunchConfigurations"
-              - "autoscaling:DescribeTags"
-              - "ec2:CreateRoute"
-              - "ec2:CreateSecurityGroup"
-              - "ec2:CreateVolume"
-              - "ec2:ModifyVolume"
-              - "ec2:AttachVolume"
-              - "ec2:DetachVolume"
-              - "ec2:DeleteVolume" # FIXME: Once k8s tags the volumes,
-              - "ec2:CreateTags"   #        these should be scoped.
-
-              # Allow pulling from ECR (still requires permissive repo policy)
-              - "ecr:GetAuthorizationToken"
-              - "ecr:BatchCheckLayerAvailability"
-              - "ecr:GetDownloadUrlForLayer"
-              - "ecr:GetRepositoryPolicy"
-              - "ecr:DescribeRepositories"
-              - "ecr:ListImages"
-              - "ecr:BatchGetImage"
-
-              # For amazon-vpc-cni-k8s
-              - "ec2:CreateNetworkInterface"
-              - "ec2:AttachNetworkInterface"
-              - "ec2:DeleteNetworkInterface"
-              - "ec2:DetachNetworkInterface"
-              - "ec2:ModifyNetworkInterfaceAttribute"
-              - "ec2:AssignPrivateIpAddresses"
-              - "tag:TagResources"
-            Resource:
-              - "*"
-          - Effect: Allow
-            Action:
-              - "ec2:RevokeSecurityGroup*"
-              - "ec2:ModifyInstanceAttribute"
-              - "ec2:AuthorizeSecurityGroup*" # k8s needs to run this on the k8s managed and stack SG below
-            Resource:
-              - "*"
-            Condition:
-              StringEquals:
-                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref AWS::StackId
-          - Effect: Allow
-            Action:
-              - "ec2:RevokeSecurityGroup*"
-              - "ec2:ModifyInstanceAttribute"
-              - "ec2:AuthorizeSecurityGroup*" # ...for the workers too
-            Resource:
-              - "*"
-            Condition:
-              StringEquals:
-                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefaultA
-          - Effect: Allow
-            Action:
-              - "ec2:RevokeSecurityGroup*"
-              - "ec2:ModifyInstanceAttribute"
-              - "ec2:AuthorizeSecurityGroup*" # ...for the workers too
-            Resource:
-              - "*"
-            Condition:
-              StringEquals:
-                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefaultB
-          - Effect: Allow
-            Action:
-              - "ec2:RevokeSecurityGroup*"
-              - "ec2:ModifyInstanceAttribute"
-              - "ec2:AuthorizeSecurityGroup*" # ...for the workers too
-            Resource:
-              - "*"
-            Condition:
-              StringEquals:
-                "ec2:ResourceTag/aws:cloudformation:stack-id": !Ref WorkerPoolDefaultC
-          - Effect: Allow
-            Action:
-              - "ec2:AuthorizeSecurityGroup*"
-              - "ec2:DeleteSecurityGroup"
-              - "ec2:DeleteRoute"
-              - "ec2:RevokeSecurityGroup*"
-            Resource:
-              - "*"
-            Condition:
-              StringEquals:
-                "ec2:ResourceTag/KubernetesCluster": !Ref DomainName
-          - Effect: Allow
-            Action:
-              - "autoscaling:SetDesiredCapacity"
-              - "autoscaling:TerminateInstanceInAutoScalingGroup"
-            Resource:
-              - !Sub "arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/*"
-          - Effect: Allow
-            Action:
-              - "s3:Get*"
-              - "s3:List*"
-              - "s3:Head*"
-            Resource:
-              - !Sub
-                - "arn:aws:s3:::${assetBucket}/${domain}/*"
-                - assetBucket: !Ref assetBucket
-                  domain: !Ref DomainName
-              - !Sub
-                - "arn:aws:s3:::${assetBucket}/${domain}"
-                - assetBucket: !Ref assetBucket
-                  domain: !Ref DomainName
-
-  ControllerRole:
-    Type: AWS::IAM::Role
-    Properties:
-      ManagedPolicyArns:
-        - !Ref PolicyController
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: "sts:AssumeRole"
-
   ControllerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: /
       Roles:
-        - !Ref ControllerRole
+        - !Ref ControllerRoleName
 
   ControllerLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -1195,31 +796,6 @@ Resources:
                 - "/"
                 - [!Ref KubeadmURLRoot, !Ref KubeadmVersion, !Ref KubeadmURLPath]
 
-  # FIXME: Lock down to only master coms
-  ControllerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPCID
-      GroupDescription: Kubernetes Controller SecurityGroup
-      SecurityGroupIngress:
-        - CidrIp: "0.0.0.0/0"
-          IpProtocol: tcp
-          FromPort: 0
-          ToPort: 65535
-        - CidrIp: "0.0.0.0/0"
-          IpProtocol: udp
-          FromPort: 0
-          ToPort: 65535
-        - CidrIp: "0.0.0.0/0"
-          IpProtocol: icmp
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: KubernetesCluster
-          Value: !Ref DomainName
-        - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
-          Value: owned
-
   ControllerELB:
     Type: "AWS::ElasticLoadBalancing::LoadBalancer"
     Properties:
@@ -1229,7 +805,7 @@ Resources:
         - !Ref PublicSubnetC
       CrossZone: true
       SecurityGroups:
-        - !Ref ControllerSecurityGroup
+        - !Ref ControllerELBSecurityGroup
       ConnectionSettings:
         IdleTimeout: 3600
       HealthCheck:
@@ -1276,13 +852,16 @@ Resources:
         - assetBucket: !Ref assetBucket
           DomainName:  !Ref DomainName
       Parameters:
-        DomainName:       !Ref DomainName
-        FeatureGates:     !Ref WorkerFeatureGates
-        CPUManagerPolicy: !Ref WorkerCPUManagerPolicy
-        assetBucket:      !Ref assetBucket
-        VPCID:            !Ref VPCID
-        PrivateSubnet:    !Ref PrivateSubnetA
-        KubeVersion:      !Ref KubeVersion
+        DomainName:         !Ref DomainName
+        FeatureGates:       !Ref WorkerFeatureGates
+        CPUManagerPolicy:   !Ref WorkerCPUManagerPolicy
+        assetBucket:        !Ref assetBucket
+        VPCID:              !Ref VPCID
+        PrivateSubnet:      !Ref PrivateSubnetC
+        KubeVersion:        !Ref KubeVersion
+        InstanceRoleName:   !Ref WorkerRoleName
+        SecurityGroup:      !Ref WorkerSecurityGroup
+        WorkerInstanceType: !Ref WorkerInstanceType
 
   WorkerPoolDefaultB:
     Type: "AWS::CloudFormation::Stack"
@@ -1292,13 +871,16 @@ Resources:
         - assetBucket: !Ref assetBucket
           DomainName:  !Ref DomainName
       Parameters:
-        DomainName:       !Ref DomainName
-        FeatureGates:     !Ref WorkerFeatureGates
-        CPUManagerPolicy: !Ref WorkerCPUManagerPolicy
-        assetBucket:      !Ref assetBucket
-        VPCID:            !Ref VPCID
-        PrivateSubnet:    !Ref PrivateSubnetB
-        KubeVersion:      !Ref KubeVersion
+        DomainName:         !Ref DomainName
+        FeatureGates:       !Ref WorkerFeatureGates
+        CPUManagerPolicy:   !Ref WorkerCPUManagerPolicy
+        assetBucket:        !Ref assetBucket
+        VPCID:              !Ref VPCID
+        PrivateSubnet:      !Ref PrivateSubnetC
+        KubeVersion:        !Ref KubeVersion
+        InstanceRoleName:   !Ref WorkerRoleName
+        SecurityGroup:      !Ref WorkerSecurityGroup
+        WorkerInstanceType: !Ref WorkerInstanceType
 
   WorkerPoolDefaultC:
     Type: "AWS::CloudFormation::Stack"
@@ -1308,36 +890,18 @@ Resources:
         - assetBucket: !Ref assetBucket
           DomainName:  !Ref DomainName
       Parameters:
-        DomainName:       !Ref DomainName
-        FeatureGates:     !Ref WorkerFeatureGates
-        CPUManagerPolicy: !Ref WorkerCPUManagerPolicy
-        assetBucket:      !Ref assetBucket
-        VPCID:            !Ref VPCID
-        PrivateSubnet:    !Ref PrivateSubnetC
-        KubeVersion:      !Ref KubeVersion
+        DomainName:         !Ref DomainName
+        FeatureGates:       !Ref WorkerFeatureGates
+        CPUManagerPolicy:   !Ref WorkerCPUManagerPolicy
+        assetBucket:        !Ref assetBucket
+        VPCID:              !Ref VPCID
+        PrivateSubnet:      !Ref PrivateSubnetC
+        KubeVersion:        !Ref KubeVersion
+        InstanceRoleName:   !Ref WorkerRoleName
+        SecurityGroup:      !Ref WorkerSecurityGroup
+        WorkerInstanceType: !Ref WorkerInstanceType
 
 Outputs:
-  ControllerRole:
-    Value: !Ref ControllerRole
-    Export:
-      Name: !Sub "${AWS::StackName}-ControllerRole"
-  WorkerRole:
-    Value: !GetAtt WorkerPoolDefaultA.Outputs.WorkerRole
-    Export:
-      Name: !Sub "${AWS::StackName}-WorkerRole"
-  WorkerRoleA:
-    Value: !GetAtt WorkerPoolDefaultA.Outputs.WorkerRole
-    Export:
-      Name: !Sub "${AWS::StackName}-WorkerRoleA"
-  WorkerRoleB:
-    Value: !GetAtt WorkerPoolDefaultB.Outputs.WorkerRole
-    Export:
-      Name: !Sub "${AWS::StackName}-WorkerRoleB"
-  WorkerRoleC:
-    Value: !GetAtt WorkerPoolDefaultC.Outputs.WorkerRole
-    Export:
-      Name: !Sub "${AWS::StackName}-WorkerRoleC"
-
   WorkerTemplateURL:
     Value: !Sub
       - "https://s3.amazonaws.com/${assetBucket}/${DomainName}/templates/worker.yaml"
@@ -1390,18 +954,6 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PublicSubnetC"
     Value: !Ref PublicSubnetC
-  PrivateSubnetRouteTableA:
-    Export:
-      Name: !Sub "${AWS::StackName}-PrivateSubnetRouteTableA"
-    Value: !Ref PrivateSubnetRouteTableA
-  PrivateSubnetRouteTableB:
-    Export:
-      Name: !Sub "${AWS::StackName}-PrivateSubnetRouteTableB"
-    Value: !Ref PrivateSubnetRouteTableB
-  PrivateSubnetRouteTableC:
-    Export:
-      Name: !Sub "${AWS::StackName}-PrivateSubnetRouteTableC"
-    Value: !Ref PrivateSubnetRouteTableC
   HostedZone:
     Export:
       Name: !Sub "${AWS::StackName}-HostedZone"

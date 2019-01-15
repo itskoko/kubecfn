@@ -1,0 +1,332 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  VPCID:
+    Description: Existing VPC with attached internet gateway to use for this cluster.
+    Type: AWS::EC2::VPC::Id
+
+  InternetGateway:
+    Description: The InternetGateway attached to the VPC
+    Type: String
+
+  PublicSubnetCidrPrefix:
+    Type: String
+
+  PublicSubnetCidrASuffix:
+    Type: String
+    Default: 0.0/23
+
+  PublicSubnetCidrBSuffix:
+    Type: String
+    Default: 2.0/23
+
+  PublicSubnetCidrCSuffix:
+    Type: String
+    Default: 4.0/23
+
+  PrivateSubnetCidr:
+    Description: Range for all subnets in CIDR notation
+    Type: String
+
+  PrivateSubnetCount:
+    Description: Number of subnets available in SubnetCidr
+    Type: Number
+    Default: 8
+
+  PrivateSubnetBits:
+    Description: Subnet mask for private subnets in Fn::Cidr notation
+    Type: Number
+    Default: 11
+
+  SubnetAZA:
+    Type: String
+    Default: us-east-1b
+
+  SubnetAZB:
+    Type: String
+    Default: us-east-1c
+
+  SubnetAZC:
+    Type: String
+    Default: us-east-1d
+
+Resources:
+  ### Private Subnets ###
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Select [ 0, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
+      AvailabilityZone: !Ref SubnetAZA
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Select [ 1, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
+      AvailabilityZone: !Ref SubnetAZB
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Select [ 2, !Cidr [ !Ref PrivateSubnetCidr, !Ref PrivateSubnetCount, !Ref PrivateSubnetBits ] ]
+      AvailabilityZone: !Ref SubnetAZC
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteTableC:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PrivateSubnetRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayA
+
+  PrivateSubnetRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayB
+
+  PrivateSubnetRouteC:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTableC
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayC
+
+  PrivateSubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateSubnetRouteTableA
+
+  PrivateSubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateSubnetRouteTableB
+
+  PrivateSubnetRouteTableAssociationC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateSubnetRouteTableC
+
+  NATEIPA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATEIPB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATEIPC:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATEIPA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+
+  NATGatewayB:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATEIPB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+
+  NATGatewayC:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATEIPC.AllocationId
+      SubnetId: !Ref PublicSubnetA
+
+  ### Public Subnets ###
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrASuffix ] ]
+      AvailabilityZone: !Ref SubnetAZA
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrBSuffix ] ]
+      AvailabilityZone: !Ref SubnetAZB
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCID
+      CidrBlock: !Join [ "", [ !Ref PublicSubnetCidrPrefix, !Ref PublicSubnetCidrCSuffix ] ]
+      AvailabilityZone: !Ref SubnetAZC
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: kubernetes.io/role/internal-elb
+        Value: 1
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPCID
+      Tags:
+      - Key: KubernetesCluster
+        Value: !Ref DomainName
+      - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+        Value: owned
+
+  PublicSubnetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  PublicSubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  PublicSubnetRouteTableAssociationC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  ControllerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCID
+      GroupDescription: Kubernetes Controller SecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: KubernetesCluster
+          Value: !Ref DomainName
+        - Key: !Join [ "/", [ "kubernetes.io/cluster", !Ref DomainName ] ]
+          Value: owned
+
+Outputs:
+  VPCID:
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCID"
+    Value: !Ref VPCID
+  PrivateSubnetA:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetA"
+    Value: !Ref PrivateSubnetA
+  PrivateSubnetB:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetB"
+    Value: !Ref PrivateSubnetB
+  PrivateSubnetC:
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetC"
+    Value: !Ref PrivateSubnetC
+  PublicSubnetA:
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetA"
+    Value: !Ref PublicSubnetA
+  PublicSubnetB:
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetB"
+    Value: !Ref PublicSubnetB
+  PublicSubnetC:
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetC"
+    Value: !Ref PublicSubnetC
