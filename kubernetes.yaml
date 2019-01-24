@@ -949,6 +949,14 @@ Outputs:
         DomainName:  !Ref DomainName
     Export:
       Name: !Sub "${AWS::StackName}-WorkerTemplateURL"
+  WorkerRoleName:
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerRoleName"
+    Value: !Ref WorkerRoleName
+  WorkerSecurityGroup:
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerSecurityGroup"
+    Value: !Ref WorkerSecurityGroup
   DomainName:
     Export:
       Name: !Sub "${AWS::StackName}-DomainName"
@@ -966,6 +974,10 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-ControllerSubdomain"
     Value: !Ref ControllerSubdomain
+  ControllerRoleName:
+    Export:
+      Name: !Sub "${AWS::StackName}-ControllerRoleName"
+    Value: !Ref ControllerRoleName
   VPCID:
     Export:
       Name: !Sub "${AWS::StackName}-VPCID"
