@@ -35,6 +35,10 @@ Parameters:
     Description: Subdomain for controller ELB, relative to DomainName
     Type: String
 
+  ControllerSubdomainInt:
+    Description: Subdomain for controller ELB, relative to DomainName
+    Type: String
+
   ControllerInstanceType:
     Description: EC2 instance type for controller nodes.
     Type: String
@@ -369,6 +373,7 @@ Resources:
       MinSize: !Ref ControllerPoolSize
       LoadBalancerNames:
         - !Ref ControllerELB
+        - !Ref ControllerELBInt
       NotificationConfigurations:
         - NotificationTypes:
             - "autoscaling:EC2_INSTANCE_LAUNCH"
@@ -724,7 +729,6 @@ Resources:
                     - |
                       KUBELET_IMAGE_TAG=${KubeVersion}
                       KUBELET_IMAGE_URL=docker://gcr.io/google-containers/hyperkube-amd64
-                      KUBELET_API_SERVERS=api.${DomainName}
                       KUBELET_CLUSTER_DOMAIN=${DomainName}
                       RKT_GLOBAL_ARGS="--insecure-options=image"
                       CRICTL_VERSION=${CriCtlVersion}
@@ -746,7 +750,7 @@ Resources:
                       apiVersion: kubeadm.k8s.io/v1alpha1
                       kind: MasterConfiguration
                       api:
-                        controlPlaneEndpoint: api.${DomainName}
+                        controlPlaneEndpoint: ${ControllerSubdomainInt}.${DomainName}
                       etcd:
                         endpoints:
                         - https://localhost:2379
@@ -771,7 +775,8 @@ Resources:
                           hostPath: /usr/share/ca-certificates
                           mountPath: /etc/ssl/certs
                       apiServerCertSANs:
-                        - api.${DomainName}
+                        - ${ControllerSubdomain}.${DomainName}
+                        - ${ControllerSubdomainInt}.${DomainName}
                       controllerManagerExtraArgs:
                         flex-volume-plugin-dir: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
                         address: 0.0.0.0
@@ -819,6 +824,31 @@ Resources:
           InstancePort: 6443
           Protocol: TCP
 
+  ControllerELBInt:
+    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
+    Properties:
+      Scheme: internal
+      Subnets:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PrivateSubnetC
+      CrossZone: true
+      SecurityGroups:
+        - !Ref ControllerSecurityGroup
+        - !Ref WorkerSecurityGroup
+      ConnectionSettings:
+        IdleTimeout: 3600
+      HealthCheck:
+        HealthyThreshold: 2
+        Interval: 30
+        Target: SSL:6443
+        UnhealthyThreshold: 4
+        Timeout: 10
+      Listeners:
+        - LoadBalancerPort: 6443
+          InstancePort: 6443
+          Protocol: TCP
+
   HostedZoneDelegation:
     Type: "AWS::Route53::RecordSet"
     Properties:
@@ -843,6 +873,16 @@ Resources:
       TTL: 60
       ResourceRecords:
         - !GetAtt [ "ControllerELB", "DNSName" ]
+
+  RecordSetInt:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      HostedZoneId: !Ref HostedZone
+      Name: !Join [ ".", [ !Ref ControllerSubdomainInt, !Ref DomainName, "" ] ]
+      Type: CNAME
+      TTL: 60
+      ResourceRecords:
+        - !GetAtt [ "ControllerELBInt", "DNSName" ]
 
   WorkerPoolDefaultA:
     Type: "AWS::CloudFormation::Stack"

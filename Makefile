@@ -15,7 +15,9 @@ endef
 
 DOMAIN_NAME                := $(call config,DomainName)
 CONTROLLER_SUBDOMAIN       := $(call config,ControllerSubdomain)
+CONTROLLER_SUBDOMAIN_INT   := $(call config,ControllerSubdomainInt)
 CONTROLLER_FQDN            := $(CONTROLLER_SUBDOMAIN).$(DOMAIN_NAME)
+CONTROLLER_FQDN_INT        := $(CONTROLLER_SUBDOMAIN_INT).$(DOMAIN_NAME)
 ASSET_BUCKET               := $(call config,assetBucket)
 CLUSTER_STATE              := $(call config,ClusterState)
 
@@ -80,11 +82,10 @@ $(BUILD_KUBEADM)/sa.pub:
 
 $(BUILD_KUBEADM)/admin.conf: $(BUILD_KUBEADM)/ca.crt
 	kubeadm alpha phase kubeconfig admin \
-		--apiserver-advertise-address 1.2.3.4 \
 		--cert-dir $(TOP)/$(dir $@)
-	# FIXME: --apiserver-advertise-address requires to use an IP now. We should
-	# generate a config with apiServer.cert-sans and controlEndpoint and use this
-	# instead. For now, keep patching file manually.
-	sed 's|\(server: https://\)[^:]*\(.*\)|\1$(CONTROLLER_FQDN)\2|' \
+	# FIXME/HACK: Inject controller name. On the controllers kubeadm will update
+	# this automatically but since we don't run kubeadm on the workers, we need
+	# to set the proper name here.
+	sed 's|\(server: https://\)[^:]*\(.*\)|\1$(CONTROLLER_FQDN_INT)\2|' \
 		/etc/kubernetes/admin.conf \
 		| install -m600 /dev/stdin $(dir $@)/admin.conf
