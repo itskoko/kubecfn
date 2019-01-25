@@ -897,7 +897,7 @@ Resources:
         CPUManagerPolicy:   !Ref WorkerCPUManagerPolicy
         assetBucket:        !Ref assetBucket
         VPCID:              !Ref VPCID
-        PrivateSubnet:      !Ref PrivateSubnetC
+        PrivateSubnet:      !Ref PrivateSubnetA
         KubeVersion:        !Ref KubeVersion
         InstanceRoleName:   !Ref WorkerRoleName
         SecurityGroup:      !Ref WorkerSecurityGroup
@@ -916,7 +916,7 @@ Resources:
         CPUManagerPolicy:   !Ref WorkerCPUManagerPolicy
         assetBucket:        !Ref assetBucket
         VPCID:              !Ref VPCID
-        PrivateSubnet:      !Ref PrivateSubnetC
+        PrivateSubnet:      !Ref PrivateSubnetB
         KubeVersion:        !Ref KubeVersion
         InstanceRoleName:   !Ref WorkerRoleName
         SecurityGroup:      !Ref WorkerSecurityGroup
