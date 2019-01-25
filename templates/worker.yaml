@@ -115,57 +115,59 @@ Mappings:
   #   | json2yaml | sed 's/^/    /'
   RegionToImageMap:
     ap-northeast-1:
-      hvm: ami-55e41e2a
-      pv: ami-69e51f16
+      hvm: ami-0b53d79c2d092ce77
+      pv: ami-07bac8d675b35e587
     ap-northeast-2:
-      hvm: ami-c09338ae
-      pv: ami-aa903bc4
+      hvm: ami-0a07af788e926e417
+      pv: ''
     ap-south-1:
-      hvm: ami-84406eeb
-      pv: ami-ae5e70c1
+      hvm: ami-06103b4b4747ad077
+      pv: ''
     ap-southeast-1:
-      hvm: ami-86bf81fa
-      pv: ami-19c1ff65
+      hvm: ami-0b0cfecc8175d06c6
+      pv: ami-02c7f68bd43bb3cef
     ap-southeast-2:
-      hvm: ami-f6e53794
-      pv: ami-b7e537d5
+      hvm: ami-03ec12353f77620c4
+      pv: ami-0dbc10b5920f7e072
     ca-central-1:
-      hvm: ami-6df57609
-      pv: ami-06fa7962
+      hvm: ami-07ec21c807d0c5176
+      pv: ''
     cn-north-1:
-      hvm: ami-555a8438
-      pv: ami-fc5c8291
+      hvm: ami-054d6909d91900dcf
+      pv: ami-02959c79557941cc1
     cn-northwest-1:
-      hvm: ami-06a0b464
+      hvm: ami-0bf16b12c53c5e9a3
+      pv: ''
     eu-central-1:
-      hvm: ami-4a83b6a1
-      pv: ami-8680b56d
+      hvm: ami-0cfe08bc0484060f5
+      pv: ami-02d1a2f9c9d3bfae5
     eu-west-1:
-      hvm: ami-c70005be
-      pv: ami-2572775c
+      hvm: ami-081f4de2b0f6032c6
+      pv: ami-025424961938fb048
     eu-west-2:
-      hvm: ami-177a9670
-      pv: ami-db7a96bc
+      hvm: ami-0a937eebe9caafbb1
+      pv: ''
     eu-west-3:
-      hvm: ami-d240f1af
+      hvm: ami-0bf3ed517b76f5c0d
+      pv: ''
     sa-east-1:
-      hvm: ami-a82079c4
-      pv: ami-9e267ff2
+      hvm: ami-09359810f00df88f2
+      pv: ami-0d1e38ba1866b81f4
     us-east-1:
-      hvm: ami-a32d46dc
-      pv: ami-6b3e5514
+      hvm: ami-0547d9705af5e8fb2
+      pv: ami-04cd3bf19e1cb48ed
     us-east-2:
-      hvm: ami-36497653
-      pv: ami-e4487781
+      hvm: ami-08cb94999d76c8e42
+      pv: ''
     us-gov-west-1:
-      hvm: ami-8ccc5ded
-      pv: ami-54cf5e35
+      hvm: ami-00c3a061
+      pv: ami-ecc1a28d
     us-west-1:
-      hvm: ami-6e647e0e
-      pv: ami-161a0076
+      hvm: ami-0b349483829492b39
+      pv: ami-0944222061c50230a
     us-west-2:
-      hvm: ami-4296ec3a
-      pv: ami-0e90ea76
+      hvm: ami-0c1cc1260c7828fcb
+      pv: ami-0c32a360898f214ca
 
 Resources:
   InstanceProfile:
