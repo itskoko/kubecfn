@@ -45,7 +45,7 @@ Parameters:
   WorkerVolumeSize:
     Description: Worker volume size in GB
     Type: Number
-    Default: 100
+    Default: 500
 
   VPCID:
     Description: Existing VPC with attached internet gateway to use for this cluster.
